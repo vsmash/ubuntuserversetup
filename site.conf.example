@@ -1,0 +1,10 @@
+REPO="/path/to/repo"
+BRANCH="main"
+WEBROOT="/var/www/your/wwwroot"
+# set this to your actual URL (no trailing slash)
+BASE_URL="https://www.your.site"
+# Cloudflare API token for certbot DNS validation
+# Create a token at: https://dash.cloudflare.com/profile/api-tokens
+# Required permissions: Zone / DNS / Edit
+CLOUDFLARE_ZONE_ID=""
+CLOUDFLARE_API_TOKEN=""

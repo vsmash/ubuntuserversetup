@@ -1,0 +1,5 @@
+# Cloudflare API token for certbot DNS validation
+# Create a token at: https://dash.cloudflare.com/profile/api-tokens
+# Required permissions: Zone / DNS / Edit
+CLOUDFLARE_ZONE_ID=""
+CLOUDFLARE_API_TOKEN=""

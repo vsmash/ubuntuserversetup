@@ -1,0 +1,4 @@
+
+# MAIASS environment files
+.env.maiass.local
+.env.maiass.bak
