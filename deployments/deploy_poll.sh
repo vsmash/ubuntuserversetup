@@ -24,7 +24,6 @@ DEPLOY_CMD="/usr/local/sbin/deploythis.sh ${site} deploy"
 
 STATE_DIR="/var/lib/${site}"
 mkdir -p "$STATE_DIR"
-chmod 0755 "$STATE_DIR"
 LAST_SEEN="$STATE_DIR/last_seen_${site}.txt"
 
 LOCK_DIR="/run/lock"; [[ -d "$LOCK_DIR" ]] || LOCK_DIR="/var/lock"

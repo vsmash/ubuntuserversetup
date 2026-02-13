@@ -124,8 +124,9 @@ CLOUDFLARE_ZONE_ID="${CFG_CF_ZONE}"
 CLOUDFLARE_API_TOKEN="${CFG_CF_TOKEN}"
 PURGE_ON_DEPLOY="${CFG_PURGE}"
 EOF
-  chmod 600 "$conf_file"
-  echo "  Config written to ${conf_file} (chmod 600)."
+  chmod 640 "$conf_file"
+  chown root:ubuntu "$conf_file" 2>/dev/null || true
+  echo "  Config written to ${conf_file} (chmod 640, owner root:ubuntu)."
 }
 
 # ---------------------------------------------------------------------------
@@ -216,6 +217,7 @@ site_add() {
 
   # Create state dir
   mkdir -p "/var/lib/${site_name}"
+  chown ubuntu:ubuntu "/var/lib/${site_name}"
   chmod 0755 "/var/lib/${site_name}"
 
   echo ""
