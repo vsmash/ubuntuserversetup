@@ -13,28 +13,118 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-# --- Module: System update & essential packages ---
+# --- Source all modules ---
 source "${SCRIPT_DIR}/modules/system_update.sh"
-system_update
-
-# --- Module: Populate /etc/app.env interactively ---
 source "${SCRIPT_DIR}/modules/setup_env.sh"
-setup_env
-
-source "/etc/app.env"
-# --- Module: Firewall lockdown to SYSOP_IP ---
 source "${SCRIPT_DIR}/modules/firewall_lockdown.sh"
-lockdown_firewall_to_sysop_ip
-
-# --- Module: Deploy custom tooling (slack, slack_boot, app.env, systemd) ---
 source "${SCRIPT_DIR}/modules/deploy_tooling.sh"
-deploy_tooling
-
-# --- Module: Certbot + Cloudflare DNS plugin ---
 source "${SCRIPT_DIR}/modules/certbot.sh"
-setup_certbot
-
-echo "Locking down SSH to key authentication only..."
-# --- Module: Lock down SSH to key authentication only ---
 source "${SCRIPT_DIR}/modules/ssh_lockdown.sh"
-set_ssh_key_auth_only
+
+# --- Load /etc/app.env if it exists (needed for firewall etc.) ---
+load_app_env() {
+  if [ -f /etc/app.env ]; then
+    set -a
+    source /etc/app.env
+    set +a
+  fi
+}
+
+# --- Run all modules in order (original behaviour) ---
+run_all() {
+  echo ""
+  echo "========================================="
+  echo "  Running FULL server setup..."
+  echo "========================================="
+  echo ""
+
+  system_update
+
+  setup_env
+  load_app_env
+
+  lockdown_firewall_to_sysop_ip
+
+  deploy_tooling
+
+  setup_certbot
+
+  echo "Locking down SSH to key authentication only..."
+  set_ssh_key_auth_only
+
+  echo ""
+  echo "========================================="
+  echo "  Full server setup complete."
+  echo "========================================="
+}
+
+# --- Interactive menu ---
+show_menu() {
+  echo ""
+  echo "========================================="
+  echo "  Server Setup — Module Menu"
+  echo "========================================="
+  echo ""
+  echo "  1)  Run full setup (all modules in order)"
+  echo "  2)  System update & essential packages"
+  echo "  3)  Setup environment (/etc/app.env)"
+  echo "  4)  Firewall lockdown (SYSOP_IP)"
+  echo "  5)  Deploy tooling (slack, systemd)"
+  echo "  6)  Certbot + Cloudflare DNS"
+  echo "  7)  SSH lockdown (key auth only)"
+  echo ""
+  echo "  0)  Exit"
+  echo ""
+}
+
+run_menu() {
+  while true; do
+    show_menu
+    read -rp "  Choose an option [0-7]: " choice
+    echo ""
+
+    case "$choice" in
+      1)
+        run_all
+        ;;
+      2)
+        system_update
+        ;;
+      3)
+        setup_env
+        load_app_env
+        ;;
+      4)
+        load_app_env
+        lockdown_firewall_to_sysop_ip
+        ;;
+      5)
+        deploy_tooling
+        ;;
+      6)
+        setup_certbot
+        ;;
+      7)
+        echo "Locking down SSH to key authentication only..."
+        set_ssh_key_auth_only
+        ;;
+      0)
+        echo "Exiting."
+        exit 0
+        ;;
+      *)
+        echo "  Invalid option: ${choice}"
+        ;;
+    esac
+
+    echo ""
+    read -rp "  Press Enter to return to menu..." _
+  done
+}
+
+# --- Entry point: --all flag runs everything, otherwise show menu ---
+if [[ "${1:-}" == "--all" ]]; then
+  run_all
+else
+  run_menu
+fi

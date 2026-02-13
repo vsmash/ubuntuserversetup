@@ -15,12 +15,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 deploy_tooling() {
   echo "==> Deploying custom tooling..."
 
-  # --- Repo directory ---
+  # --- Repo directory (always sync to pick up updates) ---
   if [ ! -d "$REPO_DIR" ]; then
     echo "  Copying repo to ${REPO_DIR}..."
     cp -a "$SCRIPT_DIR" "$REPO_DIR"
   else
-    echo "  ${REPO_DIR} already exists, skipping copy."
+    echo "  Updating ${REPO_DIR} from source..."
+    rsync -a --exclude='.git' --exclude='.env.*' "$SCRIPT_DIR/" "$REPO_DIR/"
   fi
 
   # --- slack.sh -> /usr/local/bin/slack ---

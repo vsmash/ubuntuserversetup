@@ -2,3 +2,6 @@
 # MAIASS environment files
 .env.maiass.local
 .env.maiass.bak
+
+# MAIASS log file
+maiass.log

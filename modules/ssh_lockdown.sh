@@ -2,19 +2,30 @@
 
 set_ssh_key_auth_only() {
   local sshd_config="/etc/ssh/sshd_config"
+  local changed=0
+
   # Ensure PasswordAuthentication is set to no
-  if grep -q '^PasswordAuthentication' "$sshd_config"; then
+  if grep -q '^PasswordAuthentication no$' "$sshd_config"; then
+    echo "  [ok] PasswordAuthentication already set to no."
+  elif grep -q '^PasswordAuthentication' "$sshd_config"; then
     sed -i 's/^PasswordAuthentication.*/PasswordAuthentication no/' "$sshd_config"
+    changed=1
   else
     echo 'PasswordAuthentication no' >> "$sshd_config"
+    changed=1
   fi
-  # Reload SSH service
-  if systemctl list-units --type=service | grep -qE 'sshd?\.service'; then
-    systemctl reload sshd 2>/dev/null || systemctl restart sshd 2>/dev/null
-    systemctl reload ssh 2>/dev/null || systemctl restart ssh 2>/dev/null
-  else
-    systemctl reload ssh 2>/dev/null || systemctl restart ssh 2>/dev/null
+
+  # Only reload SSH if config was changed
+  if [ "$changed" -eq 1 ]; then
+    if systemctl list-units --type=service | grep -qE 'sshd?\.service'; then
+      systemctl reload sshd 2>/dev/null || systemctl restart sshd 2>/dev/null
+      systemctl reload ssh 2>/dev/null || systemctl restart ssh 2>/dev/null
+    else
+      systemctl reload ssh 2>/dev/null || systemctl restart ssh 2>/dev/null
+    fi
+    echo "SSH config updated and service reloaded."
   fi
+
   echo "SSH is now set to key authentication only."
 }
 

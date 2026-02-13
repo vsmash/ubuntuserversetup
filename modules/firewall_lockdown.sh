@@ -10,12 +10,27 @@ lockdown_firewall_to_ip() {
     echo "Usage: lockdown_firewall_to_ip <ip-address>"
     return 1
   fi
+
+  # Check if UFW is already active and locked down to only this IP
+  if ufw status | grep -q 'Status: active'; then
+    local current_rules
+    current_rules="$(ufw status numbered | grep -oP '\d+\.\d+\.\d+\.\d+' | sort -u)"
+    local rule_count
+    rule_count="$(echo "$current_rules" | grep -c . || true)"
+
+    if [[ "$rule_count" -eq 1 ]] && [[ "$current_rules" == "$allowed_ip" ]]; then
+      echo "UFW already locked down to ${allowed_ip}. No changes needed."
+      ufw status verbose
+      return 0
+    fi
+  fi
+
   echo "Resetting UFW rules..."
   ufw --force reset
   ufw default deny incoming
   ufw default allow outgoing
   ufw allow from "$allowed_ip"
-  ufw enable
+  ufw --force enable
   echo "UFW is now locked down to allow only: $allowed_ip"
   ufw status verbose
 }
