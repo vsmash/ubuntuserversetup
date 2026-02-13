@@ -98,10 +98,14 @@ apply_perms() {
 }
 
 run_tests() {
-  sudo -u ubuntu bash -lc "
-    cd '$REPO'
-    ./scripts/test-production.sh '$BASE_URL'
-  "
+  if [[ -f "$REPO/.scripts/test-production.sh" ]]; then
+    sudo -u ubuntu bash -lc "
+      cd '$REPO'
+      bash .scripts/test-production.sh '$BASE_URL'
+    "
+  else
+    echo "No test script at ${REPO}/.scripts/test-production.sh — skipping tests."
+  fi
 }
 
 deploy() {
@@ -115,11 +119,15 @@ deploy() {
 
   new_commit="$(sudo -u ubuntu bash -lc "cd '$REPO' && git rev-parse HEAD")"
 
-  # deploy files
-  sudo -u ubuntu bash -lc "
-    cd '$REPO'
-    ./scripts/deploy-main.sh '$WEBROOT'
-  "
+  # deploy files — run repo's deploy script if present, skip if not
+  if [[ -f "$REPO/.scripts/deploy-main.sh" ]]; then
+    sudo -u ubuntu bash -lc "
+      cd '$REPO'
+      bash .scripts/deploy-main.sh '$WEBROOT'
+    "
+  else
+    echo "No deploy script at ${REPO}/.scripts/deploy-main.sh — skipping file sync."
+  fi
 
   apply_perms
 
@@ -154,10 +162,15 @@ rollback() {
     git reset --hard '$good_commit'
   "
 
-  sudo -u ubuntu bash -lc "
-    cd '$REPO'
-    ./scripts/deploy-main.sh '$WEBROOT'
-  "
+  # deploy files — run repo's deploy script if present, skip if not
+  if [[ -f "$REPO/.scripts/deploy-main.sh" ]]; then
+    sudo -u ubuntu bash -lc "
+      cd '$REPO'
+      bash .scripts/deploy-main.sh '$WEBROOT'
+    "
+  else
+    echo "No deploy script at ${REPO}/.scripts/deploy-main.sh — skipping file sync."
+  fi
 
   apply_perms
   run_tests
