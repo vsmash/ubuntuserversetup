@@ -28,21 +28,21 @@ deploy_tooling() {
   fi
 
   # --- slack.sh -> /usr/local/bin/slack ---
+  chmod +x "${REPO_DIR}/slack.sh"
   if [ -L /usr/local/bin/slack ] && [ "$(readlink -f /usr/local/bin/slack)" = "${REPO_DIR}/slack.sh" ]; then
     echo "  /usr/local/bin/slack symlink already correct."
   else
     echo "  Symlinking slack.sh -> /usr/local/bin/slack..."
     ln -sf "${REPO_DIR}/slack.sh" /usr/local/bin/slack
-    chmod +x "${REPO_DIR}/slack.sh"
   fi
 
   # --- slack_boot.sh -> /usr/local/sbin/slack_boot ---
+  chmod +x "${REPO_DIR}/slack_boot.sh"
   if [ -L /usr/local/sbin/slack_boot ] && [ "$(readlink -f /usr/local/sbin/slack_boot)" = "${REPO_DIR}/slack_boot.sh" ]; then
     echo "  /usr/local/sbin/slack_boot symlink already correct."
   else
     echo "  Symlinking slack_boot.sh -> /usr/local/sbin/slack_boot..."
     ln -sf "${REPO_DIR}/slack_boot.sh" /usr/local/sbin/slack_boot
-    chmod +x "${REPO_DIR}/slack_boot.sh"
   fi
 
   # --- systemd service for slack_boot ---
@@ -71,21 +71,21 @@ EOF
   fi
 
   # --- deploythis.sh -> /usr/local/sbin/deploythis.sh ---
+  chmod +x "${REPO_DIR}/deployments/deploythis.sh"
   if [ -L /usr/local/sbin/deploythis.sh ] && [ "$(readlink -f /usr/local/sbin/deploythis.sh)" = "${REPO_DIR}/deployments/deploythis.sh" ]; then
     echo "  /usr/local/sbin/deploythis.sh symlink already correct."
   else
     echo "  Symlinking deploythis.sh -> /usr/local/sbin/deploythis.sh..."
     ln -sf "${REPO_DIR}/deployments/deploythis.sh" /usr/local/sbin/deploythis.sh
-    chmod +x "${REPO_DIR}/deployments/deploythis.sh"
   fi
 
   # --- deploy_poll.sh -> /usr/local/sbin/deploy_poll.sh ---
+  chmod +x "${REPO_DIR}/deployments/deploy_poll.sh"
   if [ -L /usr/local/sbin/deploy_poll.sh ] && [ "$(readlink -f /usr/local/sbin/deploy_poll.sh)" = "${REPO_DIR}/deployments/deploy_poll.sh" ]; then
     echo "  /usr/local/sbin/deploy_poll.sh symlink already correct."
   else
     echo "  Symlinking deploy_poll.sh -> /usr/local/sbin/deploy_poll.sh..."
     ln -sf "${REPO_DIR}/deployments/deploy_poll.sh" /usr/local/sbin/deploy_poll.sh
-    chmod +x "${REPO_DIR}/deployments/deploy_poll.sh"
   fi
 
   # --- Ensure /etc/deployments directory exists for site configs ---
