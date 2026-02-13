@@ -4,7 +4,10 @@
 #   - Clones/copies repo to /opt/serversetup
 #   - Symlinks slack.sh -> /usr/local/bin/slack
 #   - Symlinks slack_boot.sh -> /usr/local/sbin/slack_boot
+#   - Symlinks deploythis.sh -> /usr/local/sbin/deploythis.sh
+#   - Symlinks deploy_poll.sh -> /usr/local/sbin/deploy_poll.sh
 #   - Installs systemd service for slack_boot on boot
+#   - Configures passwordless sudo for ubuntu to run deploythis.sh
 # Note: /etc/app.env is handled by setup_env.sh (runs earlier)
 
 set -e
@@ -65,6 +68,46 @@ EOF
     systemctl daemon-reload
     systemctl enable slack-boot.service
     echo "  slack-boot.service enabled."
+  fi
+
+  # --- deploythis.sh -> /usr/local/sbin/deploythis.sh ---
+  if [ -L /usr/local/sbin/deploythis.sh ] && [ "$(readlink -f /usr/local/sbin/deploythis.sh)" = "${REPO_DIR}/deployments/deploythis.sh" ]; then
+    echo "  /usr/local/sbin/deploythis.sh symlink already correct."
+  else
+    echo "  Symlinking deploythis.sh -> /usr/local/sbin/deploythis.sh..."
+    ln -sf "${REPO_DIR}/deployments/deploythis.sh" /usr/local/sbin/deploythis.sh
+    chmod +x "${REPO_DIR}/deployments/deploythis.sh"
+  fi
+
+  # --- deploy_poll.sh -> /usr/local/sbin/deploy_poll.sh ---
+  if [ -L /usr/local/sbin/deploy_poll.sh ] && [ "$(readlink -f /usr/local/sbin/deploy_poll.sh)" = "${REPO_DIR}/deployments/deploy_poll.sh" ]; then
+    echo "  /usr/local/sbin/deploy_poll.sh symlink already correct."
+  else
+    echo "  Symlinking deploy_poll.sh -> /usr/local/sbin/deploy_poll.sh..."
+    ln -sf "${REPO_DIR}/deployments/deploy_poll.sh" /usr/local/sbin/deploy_poll.sh
+    chmod +x "${REPO_DIR}/deployments/deploy_poll.sh"
+  fi
+
+  # --- Ensure /etc/deployments directory exists for site configs ---
+  mkdir -p /etc/deployments
+
+  # --- Passwordless sudo for ubuntu to run deploythis.sh ---
+  local sudoers_file="/etc/sudoers.d/deploy"
+  local sudoers_rule="ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/deploythis.sh"
+  if [ -f "$sudoers_file" ] && grep -qF "$sudoers_rule" "$sudoers_file"; then
+    echo "  [ok] sudoers rule for deploy already in place."
+  else
+    echo "  Configuring passwordless sudo for ubuntu -> deploythis.sh..."
+    echo "$sudoers_rule" > "$sudoers_file"
+    chmod 0440 "$sudoers_file"
+    # Validate the sudoers file
+    if visudo -cf "$sudoers_file" >/dev/null 2>&1; then
+      echo "  sudoers rule installed and validated."
+    else
+      echo "  error: sudoers file failed validation, removing." >&2
+      rm -f "$sudoers_file"
+      return 1
+    fi
   fi
 
   echo "==> Custom tooling deployed."

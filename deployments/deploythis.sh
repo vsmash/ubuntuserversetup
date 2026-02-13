@@ -76,7 +76,7 @@ purge_cloudflare() {
 # lock: prefer /run/lock, fall back to /var/lock
 LOCK_DIR="/run/lock"
 [[ -d "$LOCK_DIR" ]] || LOCK_DIR="/var/lock"
-LOCK_FILE="$LOCK_DIR/spirit_deploy_${BRANCH}.lock"
+LOCK_FILE="$LOCK_DIR/${site}_deploy_${BRANCH}.lock"
 
 mkdir -p "$STATE_DIR"
 chmod 0755 "$STATE_DIR"
@@ -85,7 +85,7 @@ chmod 0755 "$STATE_DIR"
 exec 9>"$LOCK_FILE"
 flock -n 9 || { echo "Deploy already running (lock: $LOCK_FILE)"; exit 1; }
 
-cmd="${1:-deploy}"
+cmd="${2:-deploy}"
 
 apply_perms() {
   # 1) Ensure base ownership is sane without walking the whole tree

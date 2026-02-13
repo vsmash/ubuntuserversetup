@@ -20,6 +20,7 @@ source "${SCRIPT_DIR}/modules/firewall_lockdown.sh"
 source "${SCRIPT_DIR}/modules/deploy_tooling.sh"
 source "${SCRIPT_DIR}/modules/certbot.sh"
 source "${SCRIPT_DIR}/modules/ssh_lockdown.sh"
+source "${SCRIPT_DIR}/modules/manage_sites.sh"
 
 # --- Load /etc/app.env if it exists (needed for firewall etc.) ---
 load_app_env() {
@@ -73,6 +74,8 @@ show_menu() {
   echo "  6)  Certbot + Cloudflare DNS"
   echo "  7)  SSH lockdown (key auth only)"
   echo ""
+  echo "  8)  Manage site deployments"
+  echo ""
   echo "  0)  Exit"
   echo ""
 }
@@ -80,7 +83,7 @@ show_menu() {
 run_menu() {
   while true; do
     show_menu
-    read -rp "  Choose an option [0-7]: " choice
+    read -rp "  Choose an option [0-8]: " choice
     echo ""
 
     case "$choice" in
@@ -107,6 +110,9 @@ run_menu() {
       7)
         echo "Locking down SSH to key authentication only..."
         set_ssh_key_auth_only
+        ;;
+      8)
+        manage_sites
         ;;
       0)
         echo "Exiting."
