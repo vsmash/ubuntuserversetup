@@ -21,6 +21,11 @@ system_update
 source "${SCRIPT_DIR}/modules/setup_env.sh"
 setup_env
 
+source "/etc/app.env"
+# --- Module: Firewall lockdown to SYSOP_IP ---
+source "${SCRIPT_DIR}/modules/firewall_lockdown.sh"
+lockdown_firewall_to_sysop_ip
+
 # --- Module: Deploy custom tooling (slack, slack_boot, app.env, systemd) ---
 source "${SCRIPT_DIR}/modules/deploy_tooling.sh"
 deploy_tooling
@@ -28,3 +33,8 @@ deploy_tooling
 # --- Module: Certbot + Cloudflare DNS plugin ---
 source "${SCRIPT_DIR}/modules/certbot.sh"
 setup_certbot
+
+echo "Locking down SSH to key authentication only..."
+# --- Module: Lock down SSH to key authentication only ---
+source "${SCRIPT_DIR}/modules/ssh_lockdown.sh"
+set_ssh_key_auth_only

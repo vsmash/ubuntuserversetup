@@ -9,7 +9,7 @@ if [[ -z "$site" ]]; then
 fi
 
 # check for config in /etc/deploy/
-SITE_CONFIG="/etc/deploy/${site}.conf"
+SITE_CONFIG="/etc/deployments/${site}.conf"
 if [[ ! -f "$SITE_CONFIG" ]]; then
   echo "Config not found: $SITE_CONFIG"
   exit 1
@@ -21,9 +21,9 @@ fi
 #WEBROOT="/var/www/your/wwwroot"
 # set this to your actual URL (no trailing slash)
 #BASE_URL="https://www.your.site"
-# Cloudflare API token for certbot DNS validation
+# Cloudflare API token for cach purge (not letsencrypt)
+# Required permissions: Zone / Cache Purge
 # Create a token at: https://dash.cloudflare.com/profile/api-tokens
-# Required permissions: Zone / DNS / Edit
 #CLOUDFLARE_ZONE_ID=""
 #CLOUDFLARE_API_TOKEN=""
 
@@ -44,6 +44,12 @@ notify_slack() {
 purge_cloudflare() {
   if [[ -z "${CLOUDFLARE_ZONE_ID:-}" ]] || [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
     echo "Skipping Cloudflare purge (credentials not configured)"
+    return 0
+  fi
+
+  # Only purge if explicitly enabled in config
+  if [[ "${PURGE_ON_DEPLOY:-0}" -ne 1 ]]; then
+    echo "Skipping Cloudflare purge (PURGE_ON_DEPLOY not set to 1)"
     return 0
   fi
 
@@ -83,59 +89,34 @@ cmd="${1:-deploy}"
 
 apply_perms() {
   # 1) Ensure base ownership is sane without walking the whole tree
-  chown mark:www-data "$WEBROOT"
+  chown -R ubuntu:www-data "$WEBROOT"
+  #2) make sure wordpress files and folders have correct permissions
+  find "$WEBROOT" -type d -exec chmod 755 {} \;
+  find "$WEBROOT" -type f -exec chmod 644 {} \;
 
-  # 2) Fix permissions on code-ish stuff, but skip big dirs
-  find "$WEBROOT" -type d \( -path "$WEBROOT/image" -o -path "$WEBROOT/mp3" \) -prune -o -type d -exec chmod 2775 {} +
-  find "$WEBROOT" -type f \( -path "$WEBROOT/image/*" -o -path "$WEBROOT/mp3/*" \) -prune -o -type f -exec chmod 0664 {} +
 
-  # 3) Writable dirs: set just these
-  install -d -m 2775 -o mark -g www-data \
-    "$WEBROOT/system/cache" \
-    "$WEBROOT/system/logs" \
-    "$WEBROOT/image/cache" \
-    "$WEBROOT/download" \
-    "$WEBROOT/mp3"
-
-  if [[ -d "$WEBROOT/image/data" ]]; then
-    chown -R mark:www-data "$WEBROOT/image/data"
-    chmod -R 2775 "$WEBROOT/image/data"
-  fi
-
-  chown -R mark:www-data \
-    "$WEBROOT/system/cache" \
-    "$WEBROOT/system/logs" \
-    "$WEBROOT/image/cache" \
-    "$WEBROOT/download" \
-    "$WEBROOT/mp3"
-
-  find "$WEBROOT/system/cache" "$WEBROOT/system/logs" "$WEBROOT/image/cache" "$WEBROOT/download" "$WEBROOT/mp3" -type d -exec chmod 2775 {} +
-  find "$WEBROOT/system/cache" "$WEBROOT/system/logs" "$WEBROOT/image/cache" "$WEBROOT/download" "$WEBROOT/mp3" -type f -exec chmod 0664 {} +
-
-  # optional reloads
-  # systemctl reload php8.4-fpm
 }
 
 run_tests() {
-  sudo -u mark bash -lc "
+  sudo -u ubuntu bash -lc "
     cd '$REPO'
     ./scripts/test-production.sh '$BASE_URL'
   "
 }
 
 deploy() {
-  # update repo as mark to origin/$BRANCH
-  sudo -u mark bash -lc "
+  # update repo as ubuntu to origin/$BRANCH
+  sudo -u ubuntu bash -lc "
     cd '$REPO'
     git fetch --prune origin
     git checkout -f '$BRANCH'
     git reset --hard 'origin/$BRANCH'
   "
 
-  new_commit="$(sudo -u mark bash -lc "cd '$REPO' && git rev-parse HEAD")"
+  new_commit="$(sudo -u ubuntu bash -lc "cd '$REPO' && git rev-parse HEAD")"
 
   # deploy files
-  sudo -u mark bash -lc "
+  sudo -u ubuntu bash -lc "
     cd '$REPO'
     ./scripts/deploy-main.sh '$WEBROOT'
   "
@@ -166,14 +147,14 @@ rollback() {
   good_commit="$(cat "$LAST_GOOD")"
   [[ -n "$good_commit" ]] || { echo "Last-good commit empty" >&2; exit 1; }
 
-  sudo -u mark bash -lc "
+  sudo -u ubuntu bash -lc "
     cd '$REPO'
     git fetch --prune origin
     git checkout -f '$BRANCH'
     git reset --hard '$good_commit'
   "
 
-  sudo -u mark bash -lc "
+  sudo -u ubuntu bash -lc "
     cd '$REPO'
     ./scripts/deploy-main.sh '$WEBROOT'
   "
