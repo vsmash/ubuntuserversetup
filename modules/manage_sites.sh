@@ -19,7 +19,7 @@ CRON_USER="ubuntu"
 
 _list_sites() {
   local configs
-  configs=("$DEPLOY_CONFIG_DIR"/*.conf 2>/dev/null) || true
+  configs=("$DEPLOY_CONFIG_DIR"/*.conf) 2>/dev/null || true
   # Filter out the glob pattern itself if no matches
   if [[ ${#configs[@]} -eq 0 ]] || [[ "${configs[0]}" == "$DEPLOY_CONFIG_DIR/*.conf" ]]; then
     echo "  (no sites configured)"
@@ -42,7 +42,7 @@ _list_sites() {
 
 _get_site_names() {
   local configs
-  configs=("$DEPLOY_CONFIG_DIR"/*.conf 2>/dev/null) || true
+  configs=("$DEPLOY_CONFIG_DIR"/*.conf) 2>/dev/null || true
   if [[ ${#configs[@]} -eq 0 ]] || [[ "${configs[0]}" == "$DEPLOY_CONFIG_DIR/*.conf" ]]; then
     return 1
   fi
