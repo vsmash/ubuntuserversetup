@@ -101,7 +101,7 @@ run_tests() {
   if [[ -f "$REPO/.scripts/test-production.sh" ]]; then
     sudo -u ubuntu bash -lc "
       cd '$REPO'
-      bash .scripts/test-production.sh '$BASE_URL'
+      source .scripts/test-production.sh '$BASE_URL'
     "
   else
     echo "No test script at ${REPO}/.scripts/test-production.sh — skipping tests."
@@ -111,6 +111,7 @@ run_tests() {
 deploy() {
   # update repo as ubuntu to origin/$BRANCH
   sudo -u ubuntu bash -lc "
+    set -e
     cd '$REPO'
     git fetch --prune origin
     git checkout -f '$BRANCH'
@@ -156,6 +157,7 @@ rollback() {
   [[ -n "$good_commit" ]] || { echo "Last-good commit empty" >&2; exit 1; }
 
   sudo -u ubuntu bash -lc "
+    set -e
     cd '$REPO'
     git fetch --prune origin
     git checkout -f '$BRANCH'
