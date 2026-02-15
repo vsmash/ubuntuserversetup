@@ -44,7 +44,28 @@ function devlog() {
     # 1st argument: message
     if [ -z "$1" ]; then
         if [ "$silent" = false ]; then
-            read -p "Log message: " log_message
+            echo "Log message (press Enter 3 times to finish):"
+            local log_message=""
+            local empty_count=0
+            while true; do
+                read -r line
+                if [ -z "$line" ]; then
+                    empty_count=$((empty_count + 1))
+                    if [ $empty_count -ge 3 ]; then
+                        break
+                    fi
+                    log_message="${log_message}"$'\n'
+                else
+                    empty_count=0
+                    if [ -n "$log_message" ]; then
+                        log_message="${log_message}"$'\n'"${line}"
+                    else
+                        log_message="${line}"
+                    fi
+                fi
+            done
+            # Trim trailing newlines
+            log_message=$(echo "$log_message" | sed -e :a -e '/^\n*$/d;N;ba')
         else
             echo "Error: Message required" >&2
             return 1
