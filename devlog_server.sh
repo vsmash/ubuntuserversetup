@@ -209,5 +209,12 @@ function devlognulloutput() {
 }
 
 # Call the function with script arguments
-# Run in background by default to not block
-devlognulloutput "$@"
+# Run interactively if stdin is a terminal and no arguments provided
+# Otherwise run in background to not block
+if [ -t 0 ] && [ $# -eq 0 ]; then
+    # Interactive mode - run directly so prompts work
+    devlog "$@"
+else
+    # Background mode - don't block
+    devlognulloutput "$@"
+fi
