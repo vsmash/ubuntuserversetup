@@ -180,9 +180,13 @@ function devlog() {
     return 0
 }
 
-# Alias for background logging
+# Background logging (default behavior)
 function devlognulloutput() {
     (devlog "$@") &> /dev/null &
     disown
     return 0
 }
+
+# Call the function with script arguments
+# Run in background by default to not block
+devlognulloutput "$@"
