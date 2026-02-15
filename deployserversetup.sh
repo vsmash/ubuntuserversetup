@@ -8,20 +8,13 @@ if [[ -n $(git status --porcelain) ]]; then
   echo "Working directory is dirty. Please commit or stash your changes before deploying."
     exit 1
 fi
-  # if staging is different from develop, offer to merge develop into staging
-  if [[ $(git rev-parse $staging) != $(git rev-parse develop) ]]; then
-    read -p "Staging branch is different from develop. Do you want to merge develop into staging? (y/n) " choice
-    if [[ $choice == "y" ]]; then
       git checkout $staging
       echo -e "\033[0;32mChanged to staging branch: $staging\033[0m"
       git merge develop
       echo -e "\033[0;32mMerged develop into staging\033[0m"
       git push origin $staging
-      echo -e "\033[0;32mPushed staging to origin\033[0m"
       git checkout $BRANCH_NAME
       echo "Returned to branch: $BRANCH_NAME" 
-    fi
-  fi
   # echo in color
   echo -e "\033[0;32mProceeding to deploy to production...\033[0m"
 
