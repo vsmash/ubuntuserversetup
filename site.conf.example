@@ -1,6 +1,6 @@
-REPO="/path/to/repo"
+REPO="/home/ubuntu/deployment/sitename"
 BRANCH="main"
-WEBROOT="/var/www/your/wwwroot"
+WEBROOT="/var/www/sitename/wwwroot"
 # set this to your actual URL (no trailing slash)
 BASE_URL="https://www.your.site"
 # Cloudflare API token for certbot DNS validation

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+cd /tmp
+
 site="$1"
 
 # check for site parameter
@@ -33,7 +35,7 @@ exec 9>"$LOCK_FILE"
 flock -n 9 || exit 0
 
 # Ask the remote what HEAD is (cheap)
-remote_head="$(git ls-remote --heads "$REPO" "$BRANCH" | awk '{print $1}')"
+remote_head="$(git -C "$REPO" ls-remote --heads origin "$BRANCH" | awk '{print $1}')"
 
 [[ -n "$remote_head" ]] || exit 0
 

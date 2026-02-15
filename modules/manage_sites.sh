@@ -89,9 +89,11 @@ _prompt_config() {
   echo "  Enter values (leave blank to keep default shown in brackets):"
   echo "  --------------------------------------------------------------"
 
-  read -rp "  REPO [${def_repo}]: " val; CFG_REPO="${val:-$def_repo}"
+  read -rp "  REPO (local git clone path, no trailing slash) [${def_repo}]: " val; CFG_REPO="${val:-$def_repo}"
+  CFG_REPO="${CFG_REPO%/}"
   read -rp "  BRANCH [${def_branch}]: " val; CFG_BRANCH="${val:-$def_branch}"
-  read -rp "  WEBROOT [${def_webroot}]: " val; CFG_WEBROOT="${val:-$def_webroot}"
+  read -rp "  WEBROOT (deploy target path, no trailing slash) [${def_webroot}]: " val; CFG_WEBROOT="${val:-$def_webroot}"
+  CFG_WEBROOT="${CFG_WEBROOT%/}"
   read -rp "  BASE_URL [${def_base_url}]: " val; CFG_BASE_URL="${val:-$def_base_url}"
   echo ""
   echo "  Cloudflare (for cache purge on deploy — leave blank to skip):"
