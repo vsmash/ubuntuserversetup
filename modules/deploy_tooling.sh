@@ -6,7 +6,9 @@
 #   - Symlinks slack_boot.sh -> /usr/local/sbin/slack_boot
 #   - Symlinks deploythis.sh -> /usr/local/sbin/deploythis.sh
 #   - Symlinks deploy_poll.sh -> /usr/local/sbin/deploy_poll.sh
+#   - Symlinks devlog_server.sh -> /usr/local/bin/devlog
 #   - Installs systemd service for slack_boot on boot
+#   - Installs PHP dependencies for devlog (Google Sheets integration)
 #   - Configures passwordless sudo for ubuntu to run deploythis.sh
 # Note: /etc/app.env is handled by setup_env.sh (runs earlier)
 
@@ -90,6 +92,33 @@ EOF
 
   # --- Ensure /etc/deployments directory exists for site configs ---
   mkdir -p /etc/deployments
+  
+  # --- Ensure /etc/serversetup/credentials exists for service account ---
+  mkdir -p /etc/serversetup/credentials
+  chmod 700 /etc/serversetup/credentials
+
+  # --- devlog -> /usr/local/bin/devlog ---
+  chmod +x "${REPO_DIR}/devlog_server.sh"
+  if [ -L /usr/local/bin/devlog ] && [ "$(readlink -f /usr/local/bin/devlog)" = "${REPO_DIR}/devlog_server.sh" ]; then
+    echo "  /usr/local/bin/devlog symlink already correct."
+  else
+    echo "  Symlinking devlog_server.sh -> /usr/local/bin/devlog..."
+    ln -sf "${REPO_DIR}/devlog_server.sh" /usr/local/bin/devlog
+  fi
+
+  # --- Install PHP dependencies for devlog (Google Sheets integration) ---
+  if [ -d "${REPO_DIR}/php_functions" ]; then
+    if [ ! -d "${REPO_DIR}/php_functions/vendor" ]; then
+      echo "  Installing devlog PHP dependencies..."
+      # Install as ubuntu user to avoid Composer root warning
+      sudo -u ubuntu bash -c "cd '${REPO_DIR}/php_functions' && composer install --no-dev --optimize-autoloader" 2>/dev/null || {
+        echo "  Warning: Composer not available, skipping PHP dependencies."
+        echo "  Google Sheets logging will not work until you run: cd ${REPO_DIR}/php_functions && composer install"
+      }
+    else
+      echo "  Devlog PHP dependencies already installed."
+    fi
+  fi
 
   # --- Passwordless sudo for ubuntu to run deploythis.sh ---
   local sudoers_file="/etc/sudoers.d/deploy"
