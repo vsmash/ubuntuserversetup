@@ -88,13 +88,13 @@ flock -n 9 || { echo "Deploy already running (lock: $LOCK_FILE)"; exit 1; }
 cmd="${2:-deploy}"
 
 apply_perms() {
-  # 1) Ensure base ownership is sane without walking the whole tree
+  echo "Setting ownership..."
   chown -R ubuntu:www-data "$WEBROOT"
-  #2) make sure wordpress files and folders have correct permissions
-  find "$WEBROOT" -type d -exec chmod 755 {} \;
-  find "$WEBROOT" -type f -exec chmod 644 {} \;
-
-
+  echo "Setting directory permissions..."
+  find "$WEBROOT" -type d ! -perm 755 -exec chmod 755 {} +
+  echo "Setting file permissions..."
+  find "$WEBROOT" -type f ! -perm 644 -exec chmod 644 {} +
+  echo "Permissions applied."
 }
 
 run_tests() {
