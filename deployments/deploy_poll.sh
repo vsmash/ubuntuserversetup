@@ -26,18 +26,14 @@ STATE_DIR="/var/lib/${site}"
 mkdir -p "$STATE_DIR"
 LAST_SEEN="$STATE_DIR/last_seen_${site}.txt"
 
-LOCK_DIR="/run/lock"; [[ -d "$LOCK_DIR" ]] || LOCK_DIR="/var/lock"
-LOCK_FILE="$LOCK_DIR/${site}.lock"
+LOCK_FILE="$STATE_DIR/${site}.lock"
 
 # If a deploy is already running, do nothing
 exec 9>"$LOCK_FILE"
 flock -n 9 || exit 0
 
 # Ask the remote what HEAD is (cheap)
-remote_head="$(sudo -u ubuntu bash -lc "
-  cd '$REPO'
-  git ls-remote --heads origin '$BRANCH' | awk '{print \$1}'
-")"
+remote_head="$(git ls-remote --heads "$REPO" "$BRANCH" | awk '{print $1}')"
 
 [[ -n "$remote_head" ]] || exit 0
 
