@@ -122,6 +122,14 @@ EOF
     fi
   fi
 
+  # --- Copy root/bash scripts to /root/bash ---
+  if [ -d "${REPO_DIR}/root/bash" ]; then
+    mkdir -p /root/bash
+    rsync -a "${REPO_DIR}/root/bash/" /root/bash/
+    chmod +x /root/bash/*.sh 2>/dev/null || true
+    echo "  /root/bash scripts updated."
+  fi
+
   # --- Passwordless sudo for ubuntu to run deploythis.sh ---
   local sudoers_file="/etc/sudoers.d/deploy"
   local sudoers_rule="ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/deploythis.sh"
