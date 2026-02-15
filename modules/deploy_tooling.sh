@@ -108,6 +108,8 @@ EOF
 
   # --- Install PHP dependencies for devlog (Google Sheets integration) ---
   if [ -d "${REPO_DIR}/php_functions" ]; then
+    # Ensure ubuntu can write to php_functions (for composer.lock, vendor/)
+    chown -R ubuntu:ubuntu "${REPO_DIR}/php_functions"
     if [ ! -d "${REPO_DIR}/php_functions/vendor" ]; then
       echo "  Installing devlog PHP dependencies..."
       # Install as ubuntu user to avoid Composer root warning
