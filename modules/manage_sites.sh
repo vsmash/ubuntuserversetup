@@ -220,6 +220,19 @@ site_add() {
   chown ubuntu:ubuntu "/var/lib/${site_name}"
   chmod 0755 "/var/lib/${site_name}"
 
+  # Create logrotate config for deploy log
+  cat > "/etc/logrotate.d/${site_name}_deploy" <<EOF
+/var/log/${site_name}_deploy.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 644 ubuntu ubuntu
+}
+EOF
+
   echo ""
   read -rp "  Enable polling for ${site_name}? [Y/n]: " enable_poll
   if [[ ! "$enable_poll" =~ ^[Nn]$ ]]; then
