@@ -6,8 +6,14 @@
 
 set -e
 
-REPO_DIR="/opt/serversetup"
 ENV_FILE="/etc/app.env"
+SCRIPT_DIR_ENV="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Use /opt/serversetup if it exists, otherwise fall back to the source repo
+if [ -d "/opt/serversetup" ]; then
+  REPO_DIR="/opt/serversetup"
+else
+  REPO_DIR="$SCRIPT_DIR_ENV"
+fi
 EXAMPLE_FILE="${REPO_DIR}/app.env.example"
 
 setup_env() {
