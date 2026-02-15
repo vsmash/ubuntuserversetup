@@ -2,6 +2,11 @@
 # Simplified devlog for VPS server
 # Fixed values: Client=TMPDesign, Subclient=SMWS, Project=VPS Devops
 
+# Source environment variables
+if [ -f /etc/app.env ]; then
+    source /etc/app.env
+fi
+
 function devlog() {
     local silent=false
     local continuation=false
