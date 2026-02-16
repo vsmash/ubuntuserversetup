@@ -130,8 +130,8 @@ function sessionlog_start() {
         trap '_sessionlog_on_exit' EXIT
     fi
 
-    echo -e "${_SL_GREEN}Session log started.${_SL_OFF} Capturing commands to ${_SESSIONLOG_FILE}"
-    echo "Commands will be summarised every ${SESSIONLOG_INTERVAL:-30} minutes and on session exit."
+    # echo -e "${_SL_GREEN}Session log started.${_SL_OFF} Capturing commands to ${_SESSIONLOG_FILE}"
+    # echo "Commands will be summarised every ${SESSIONLOG_INTERVAL:-30} minutes and on session exit."
 }
 
 function sessionlog_stop() {
@@ -276,11 +276,9 @@ function _sessionlog_flush_and_log() {
     local commands cmd_count
     commands=$(<"$temp_file")
     cmd_count=$(echo "$commands" | wc -l | tr -d ' ')
-    
+    > "$_SESSIONLOG_FILE"
     _SESSIONLOG_LAST_FLUSH=$(date +%s)
     _SESSIONLOG_CMD_COUNT=0
-
-    echo -e "${_SL_GREEN}Flushing $cmd_count commands (AI summary in background)...${_SL_OFF}"
 
     # Snapshot terminal output if typescript capture is active
     local output_context=""
@@ -353,14 +351,7 @@ $clean_commands"
         
         # Clean up temp file
         rm -f "$temp_file" 2>/dev/null
-    ) &>/dev/null &
-    
-    # Ensure background job is truly detached
-    if [[ -n "${ZSH_VERSION:-}" ]]; then
-        disown %% 2>/dev/null || true
-    else
-        disown 2>/dev/null || true
-    fi
+    ) &>/dev/null & disown
     
     return 0
 }
