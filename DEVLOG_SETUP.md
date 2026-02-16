@@ -4,7 +4,7 @@ This guide sets up the simplified devlog system on your Ubuntu server with Googl
 
 ## Features
 
-- **Fixed values**: Client=TMPDesign, Subclient=SMWS, Project=VPS Devops
+- **Configurable values**: Client, Subclient, Project (set in /etc/app.env)
 - **Simple usage**: `devlog "message" [minutes] [ticket]`
 - **Auto-calculates time** between log entries
 - **Logs to Google Sheets** with full history tracking
@@ -131,11 +131,11 @@ devlog -c "Finished"
 
 ## Fixed Values
 
-These are hardcoded in the server version:
+These are configured via `/etc/app.env`:
 
-- **Client**: TMPDesign
-- **Subclient**: SMWS  
-- **Project**: VPS Devops
+- **DEVLOG_CLIENT**: Your company/client name
+- **DEVLOG_SUBCLIENT**: Your project/subclient name
+- **DEVLOG_PROJECT**: Project label (e.g. "VPS Devops")
 - **Timezone**: Australia/Sydney
 
 ## Files
@@ -154,7 +154,7 @@ These are hardcoded in the server version:
 php /opt/serversetup/php_functions/logToGoogleSpreadSheet.php \
   "/etc/serversetup/credentials/service-account.json" \
   "YOUR_SPREADSHEET_ID" \
-  "TMPDesign" "SMWS" "$(hostname)" "VPS Devops" "TEST-123" "5" "Test entry"
+  "$DEVLOG_CLIENT" "$DEVLOG_SUBCLIENT" "$(hostname)" "$DEVLOG_PROJECT" "TEST-123" "5" "Test entry"
 ```
 
 ### Check PHP dependencies

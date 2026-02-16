@@ -11,7 +11,7 @@ set -e
 DEPLOY_CONFIG_DIR="/etc/deployments"
 POLL_CMD="/usr/local/sbin/deploy_poll.sh"
 DEPLOY_CMD="/usr/local/sbin/deploythis.sh"
-CRON_USER="ubuntu"
+CRON_USER="${APP_USER:-ubuntu}"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -127,8 +127,8 @@ CLOUDFLARE_API_TOKEN="${CFG_CF_TOKEN}"
 PURGE_ON_DEPLOY="${CFG_PURGE}"
 EOF
   chmod 640 "$conf_file"
-  chown root:ubuntu "$conf_file" 2>/dev/null || true
-  echo "  Config written to ${conf_file} (chmod 640, owner root:ubuntu)."
+  chown "root:${APP_USER:-ubuntu}" "$conf_file" 2>/dev/null || true
+  echo "  Config written to ${conf_file} (chmod 640, owner root:${APP_USER:-ubuntu})."
 }
 
 # ---------------------------------------------------------------------------
@@ -199,7 +199,7 @@ site_list() {
 
 site_add() {
   echo ""
-  read -rp "  Enter a short site name (e.g. smws, spiritgallery): " site_name
+  read -rp "  Enter a short site name (e.g. mysite, projectx): " site_name
   site_name="$(echo "$site_name" | tr -cd 'a-zA-Z0-9_-')"
 
   if [[ -z "$site_name" ]]; then
@@ -219,8 +219,12 @@ site_add() {
 
   # Create state dir
   mkdir -p "/var/lib/${site_name}"
-  chown ubuntu:ubuntu "/var/lib/${site_name}"
+  chown "${APP_USER:-ubuntu}:${APP_USER:-ubuntu}" "/var/lib/${site_name}"
   chmod 0755 "/var/lib/${site_name}"
+
+  # Create deploy log file
+  touch "/var/log/${site_name}_deploy.log"
+  chown "${APP_USER:-ubuntu}:${APP_USER:-ubuntu}" "/var/log/${site_name}_deploy.log"
 
   # Create logrotate config for deploy log
   cat > "/etc/logrotate.d/${site_name}_deploy" <<EOF
@@ -231,7 +235,7 @@ site_add() {
     delaycompress
     missingok
     notifempty
-    create 644 ubuntu ubuntu
+    create 644 ${APP_USER:-ubuntu} ${APP_USER:-ubuntu}
 }
 EOF
 

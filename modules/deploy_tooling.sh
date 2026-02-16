@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
 # Module: deploy_tooling.sh
-# Deploys custom tooling to the server:
-#   - Clones/copies repo to /opt/serversetup
-#   - Symlinks slack.sh -> /usr/local/bin/slack
-#   - Symlinks slack_boot.sh -> /usr/local/sbin/slack_boot
-#   - Symlinks deploythis.sh -> /usr/local/sbin/deploythis.sh
-#   - Symlinks deploy_poll.sh -> /usr/local/sbin/deploy_poll.sh
-#   - Symlinks devlog_server.sh -> /usr/local/bin/devlog
-#   - Installs systemd service for slack_boot on boot
-#   - Installs PHP dependencies for devlog (Google Sheets integration)
-#   - Configures passwordless sudo for ubuntu to run deploythis.sh
+# Modular tooling installer — each component can be installed independently.
 # Note: /etc/app.env is handled by setup_env.sh (runs earlier)
 
 set -e
@@ -17,10 +8,8 @@ set -e
 REPO_DIR="/opt/serversetup"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-deploy_tooling() {
-  echo "==> Deploying custom tooling..."
-
-  # --- Repo directory (always sync to pick up updates) ---
+# ---- Helper: sync repo to /opt/serversetup (base for everything) ----
+_tooling_sync_repo() {
   if [ ! -d "$REPO_DIR" ]; then
     echo "  Copying repo to ${REPO_DIR}..."
     cp -a "$SCRIPT_DIR" "$REPO_DIR"
@@ -28,29 +17,39 @@ deploy_tooling() {
     echo "  Updating ${REPO_DIR} from source..."
     rsync -a --exclude='.git' --exclude='.env.*' "$SCRIPT_DIR/" "$REPO_DIR/"
   fi
+}
 
-  # --- slack.sh -> /usr/local/bin/slack ---
-  chmod +x "${REPO_DIR}/slack.sh"
-  if [ -L /usr/local/bin/slack ] && [ "$(readlink -f /usr/local/bin/slack)" = "${REPO_DIR}/slack.sh" ]; then
-    echo "  /usr/local/bin/slack symlink already correct."
+# ---- Helper: symlink with idempotency ----
+_tooling_symlink() {
+  local src="$1" dest="$2"
+  chmod +x "$src"
+  if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$src" ]; then
+    echo "  [ok] $dest already correct."
   else
-    echo "  Symlinking slack.sh -> /usr/local/bin/slack..."
-    ln -sf "${REPO_DIR}/slack.sh" /usr/local/bin/slack
+    echo "  Symlinking $src -> $dest..."
+    ln -sf "$src" "$dest"
   fi
+}
 
-  # --- slack_boot.sh -> /usr/local/sbin/slack_boot ---
-  chmod +x "${REPO_DIR}/slack_boot.sh"
-  if [ -L /usr/local/sbin/slack_boot ] && [ "$(readlink -f /usr/local/sbin/slack_boot)" = "${REPO_DIR}/slack_boot.sh" ]; then
-    echo "  /usr/local/sbin/slack_boot symlink already correct."
-  else
-    echo "  Symlinking slack_boot.sh -> /usr/local/sbin/slack_boot..."
-    ln -sf "${REPO_DIR}/slack_boot.sh" /usr/local/sbin/slack_boot
-  fi
+# ============================================================
+# Individual install functions
+# ============================================================
 
-  # --- systemd service for slack_boot ---
+tooling_install_slack() {
+  echo "--- Installing Slack CLI ---"
+  _tooling_sync_repo
+  _tooling_symlink "${REPO_DIR}/slack.sh" /usr/local/bin/slack
+  echo "  Done. Usage: slack 'message' or slack --webhook=monitor 'message'"
+}
+
+tooling_install_slack_boot() {
+  echo "--- Installing Slack boot notification ---"
+  _tooling_sync_repo
+  _tooling_symlink "${REPO_DIR}/slack_boot.sh" /usr/local/sbin/slack_boot
+
   local service_file="/etc/systemd/system/slack-boot.service"
   if [ -f "$service_file" ]; then
-    echo "  slack-boot.service already installed."
+    echo "  [ok] slack-boot.service already installed."
   else
     echo "  Installing slack-boot.service..."
     cat > "$service_file" <<'EOF'
@@ -71,75 +70,26 @@ EOF
     systemctl enable slack-boot.service
     echo "  slack-boot.service enabled."
   fi
+}
 
-  # --- deploythis.sh -> /usr/local/sbin/deploythis.sh ---
-  chmod +x "${REPO_DIR}/deployments/deploythis.sh"
-  if [ -L /usr/local/sbin/deploythis.sh ] && [ "$(readlink -f /usr/local/sbin/deploythis.sh)" = "${REPO_DIR}/deployments/deploythis.sh" ]; then
-    echo "  /usr/local/sbin/deploythis.sh symlink already correct."
-  else
-    echo "  Symlinking deploythis.sh -> /usr/local/sbin/deploythis.sh..."
-    ln -sf "${REPO_DIR}/deployments/deploythis.sh" /usr/local/sbin/deploythis.sh
-  fi
+tooling_install_deploy_scripts() {
+  echo "--- Installing deploy scripts ---"
+  _tooling_sync_repo
 
-  # --- deploy_poll.sh -> /usr/local/sbin/deploy_poll.sh ---
-  chmod +x "${REPO_DIR}/deployments/deploy_poll.sh"
-  if [ -L /usr/local/sbin/deploy_poll.sh ] && [ "$(readlink -f /usr/local/sbin/deploy_poll.sh)" = "${REPO_DIR}/deployments/deploy_poll.sh" ]; then
-    echo "  /usr/local/sbin/deploy_poll.sh symlink already correct."
-  else
-    echo "  Symlinking deploy_poll.sh -> /usr/local/sbin/deploy_poll.sh..."
-    ln -sf "${REPO_DIR}/deployments/deploy_poll.sh" /usr/local/sbin/deploy_poll.sh
-  fi
+  _tooling_symlink "${REPO_DIR}/deployments/deploythis.sh" /usr/local/sbin/deploythis.sh
+  _tooling_symlink "${REPO_DIR}/deployments/deploy_poll.sh" /usr/local/sbin/deploy_poll.sh
 
-  # --- Ensure /etc/deployments directory exists for site configs ---
   mkdir -p /etc/deployments
-  
-  # --- Ensure /etc/serversetup/credentials exists for service account ---
-  mkdir -p /etc/serversetup/credentials
-  chmod 700 /etc/serversetup/credentials
 
-  # --- devlog -> /usr/local/bin/devlog ---
-  chmod +x "${REPO_DIR}/devlog_server.sh"
-  if [ -L /usr/local/bin/devlog ] && [ "$(readlink -f /usr/local/bin/devlog)" = "${REPO_DIR}/devlog_server.sh" ]; then
-    echo "  /usr/local/bin/devlog symlink already correct."
-  else
-    echo "  Symlinking devlog_server.sh -> /usr/local/bin/devlog..."
-    ln -sf "${REPO_DIR}/devlog_server.sh" /usr/local/bin/devlog
-  fi
-
-  # --- Install PHP dependencies for devlog (Google Sheets integration) ---
-  if [ -d "${REPO_DIR}/php_functions" ]; then
-    # Ensure ubuntu can write to php_functions (for composer.lock, vendor/)
-    chown -R ubuntu:ubuntu "${REPO_DIR}/php_functions"
-    if [ ! -d "${REPO_DIR}/php_functions/vendor" ]; then
-      echo "  Installing devlog PHP dependencies..."
-      # Install as ubuntu user to avoid Composer root warning
-      sudo -u ubuntu bash -c "cd '${REPO_DIR}/php_functions' && composer install --no-dev --optimize-autoloader" 2>/dev/null || {
-        echo "  Warning: Composer not available, skipping PHP dependencies."
-        echo "  Google Sheets logging will not work until you run: cd ${REPO_DIR}/php_functions && composer install"
-      }
-    else
-      echo "  Devlog PHP dependencies already installed."
-    fi
-  fi
-
-  # --- Copy root/bash scripts to /root/bash ---
-  if [ -d "${REPO_DIR}/root/bash" ]; then
-    mkdir -p /root/bash
-    rsync -a "${REPO_DIR}/root/bash/" /root/bash/
-    chmod +x /root/bash/*.sh 2>/dev/null || true
-    echo "  /root/bash scripts updated."
-  fi
-
-  # --- Passwordless sudo for ubuntu to run deploythis.sh ---
+  # Passwordless sudo for APP_USER to run deploythis.sh
   local sudoers_file="/etc/sudoers.d/deploy"
-  local sudoers_rule="ubuntu ALL=(root) NOPASSWD: /usr/local/sbin/deploythis.sh"
+  local sudoers_rule="${APP_USER:-ubuntu} ALL=(root) NOPASSWD: /usr/local/sbin/deploythis.sh"
   if [ -f "$sudoers_file" ] && grep -qF "$sudoers_rule" "$sudoers_file"; then
     echo "  [ok] sudoers rule for deploy already in place."
   else
-    echo "  Configuring passwordless sudo for ubuntu -> deploythis.sh..."
+    echo "  Configuring passwordless sudo for ${APP_USER:-ubuntu} -> deploythis.sh..."
     echo "$sudoers_rule" > "$sudoers_file"
     chmod 0440 "$sudoers_file"
-    # Validate the sudoers file
     if visudo -cf "$sudoers_file" >/dev/null 2>&1; then
       echo "  sudoers rule installed and validated."
     else
@@ -148,6 +98,123 @@ EOF
       return 1
     fi
   fi
+}
 
-  echo "==> Custom tooling deployed."
+tooling_install_devlog() {
+  echo "--- Installing devlog ---"
+  _tooling_sync_repo
+
+  _tooling_symlink "${REPO_DIR}/devlog_server.sh" /usr/local/bin/devlog
+
+  mkdir -p /etc/serversetup/credentials
+  chmod 700 /etc/serversetup/credentials
+
+  # PHP dependencies for Google Sheets integration
+  if [ -d "${REPO_DIR}/php_functions" ]; then
+    chown -R "${APP_USER:-ubuntu}:${APP_USER:-ubuntu}" "${REPO_DIR}/php_functions"
+    if [ ! -d "${REPO_DIR}/php_functions/vendor" ]; then
+      echo "  Installing devlog PHP dependencies..."
+      sudo -u "${APP_USER:-ubuntu}" bash -c "cd '${REPO_DIR}/php_functions' && composer install --no-dev --optimize-autoloader" 2>/dev/null || {
+        echo "  Warning: Composer not available, skipping PHP dependencies."
+        echo "  Google Sheets logging will not work until you run: cd ${REPO_DIR}/php_functions && composer install"
+      }
+    else
+      echo "  [ok] Devlog PHP dependencies already installed."
+    fi
+  fi
+}
+
+tooling_install_sessionlog() {
+  echo "--- Installing session log ---"
+  _tooling_sync_repo
+
+  if [ ! -d "${REPO_DIR}/opt/sessionlog" ]; then
+    echo "  error: opt/sessionlog not found in repo." >&2
+    return 1
+  fi
+
+  mkdir -p /opt/sessionlog
+  cp -f "${REPO_DIR}/opt/sessionlog/sessionlog.sh" /opt/sessionlog/sessionlog.sh
+  chmod +x /opt/sessionlog/sessionlog.sh
+
+  # Install profile.d hook if not already present
+  local profile_hook="/etc/profile.d/sessionlog.sh"
+  if [ -f "$profile_hook" ]; then
+    echo "  [ok] $profile_hook already exists."
+  else
+    echo "  Creating $profile_hook (autocapture off by default)..."
+    cat > "$profile_hook" <<'PROFEOF'
+# Session log — set SESSIONLOG_ONEMIN_API_KEY and SESSIONLOG_AUTOCAPTURE=true to enable
+# source /opt/sessionlog/sessionlog.sh
+PROFEOF
+    echo "  To enable, edit $profile_hook and uncomment the source line."
+    echo "  Set SESSIONLOG_ONEMIN_API_KEY in /etc/app.env or the profile hook."
+  fi
+}
+
+tooling_install_root_bash() {
+  echo "--- Installing /root/bash scripts ---"
+  _tooling_sync_repo
+
+  if [ -d "${REPO_DIR}/root/bash" ]; then
+    mkdir -p /root/bash
+    rsync -a "${REPO_DIR}/root/bash/" /root/bash/
+    chmod +x /root/bash/*.sh 2>/dev/null || true
+    echo "  /root/bash scripts updated."
+  else
+    echo "  No root/bash directory found in repo."
+  fi
+}
+
+# ============================================================
+# Install all (for full setup)
+# ============================================================
+tooling_install_all() {
+  echo "==> Installing all tooling..."
+  _tooling_sync_repo
+  tooling_install_slack
+  tooling_install_slack_boot
+  tooling_install_deploy_scripts
+  tooling_install_devlog
+  tooling_install_sessionlog
+  tooling_install_root_bash
+  echo "==> All tooling installed."
+}
+
+# ============================================================
+# Interactive sub-menu
+# ============================================================
+deploy_tooling() {
+  echo ""
+  echo "  ─────────────────────────────────────"
+  echo "  Deploy Tooling — Select Components"
+  echo "  ─────────────────────────────────────"
+  echo ""
+  echo "  1)  Install ALL tooling"
+  echo "  2)  Sync repo to /opt/serversetup"
+  echo "  3)  Slack CLI (/usr/local/bin/slack)"
+  echo "  4)  Slack boot notification (systemd)"
+  echo "  5)  Deploy scripts (deploythis + poll + sudoers)"
+  echo "  6)  Devlog (Google Sheets logging)"
+  echo "  7)  Session log (AI command summaries)"
+  echo "  8)  Root bash scripts (/root/bash)"
+  echo ""
+  echo "  0)  Back"
+  echo ""
+
+  read -rp "  Choose [0-8]: " dt_choice
+  echo ""
+
+  case "$dt_choice" in
+    1) tooling_install_all ;;
+    2) _tooling_sync_repo ;;
+    3) tooling_install_slack ;;
+    4) tooling_install_slack_boot ;;
+    5) tooling_install_deploy_scripts ;;
+    6) tooling_install_devlog ;;
+    7) tooling_install_sessionlog ;;
+    8) tooling_install_root_bash ;;
+    0) return 0 ;;
+    *) echo "  Invalid option: ${dt_choice}" ;;
+  esac
 }

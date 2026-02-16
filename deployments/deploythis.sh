@@ -29,6 +29,11 @@ fi
 
 source "$SITE_CONFIG"
 
+# Source app env for APP_USER
+if [[ -f /etc/app.env ]]; then
+  set -a; source /etc/app.env; set +a
+fi
+DEPLOY_USER="${APP_USER:-ubuntu}"
 
 STATE_DIR="/var/lib/${site}"
 LAST_GOOD="$STATE_DIR/last_good_${BRANCH}.txt"
@@ -89,7 +94,7 @@ cmd="${2:-deploy}"
 
 apply_perms() {
   echo "Setting ownership..."
-  chown -R ubuntu:www-data "$WEBROOT"
+  chown -R "${DEPLOY_USER}:www-data" "$WEBROOT"
   echo "Setting directory permissions..."
   find "$WEBROOT" -type d ! -perm 755 -exec chmod 755 {} +
   echo "Setting file permissions..."
@@ -99,7 +104,7 @@ apply_perms() {
 
 run_tests() {
   if [[ -f "$REPO/.scripts/test-production.sh" ]]; then
-    sudo -u ubuntu bash -lc "
+    sudo -u "$DEPLOY_USER" bash -lc "
       cd '$REPO'
       source .scripts/test-production.sh '$BASE_URL'
     "
@@ -109,8 +114,8 @@ run_tests() {
 }
 
 deploy() {
-  # update repo as ubuntu to origin/$BRANCH
-  sudo -u ubuntu bash -lc "
+  # update repo as DEPLOY_USER to origin/$BRANCH
+  sudo -u "$DEPLOY_USER" bash -lc "
     set -e
     cd '$REPO'
     git fetch --prune origin
@@ -118,11 +123,11 @@ deploy() {
     git reset --hard 'origin/$BRANCH'
   "
 
-  new_commit="$(sudo -u ubuntu bash -lc "cd '$REPO' && git rev-parse HEAD")"
+  new_commit="$(sudo -u "$DEPLOY_USER" bash -lc "cd '$REPO' && git rev-parse HEAD")"
 
   # deploy files — run repo's deploy script if present, skip if not
   if [[ -f "$REPO/.scripts/deploy-main.sh" ]]; then
-    sudo -u ubuntu bash -lc "
+    sudo -u "$DEPLOY_USER" bash -lc "
       cd '$REPO'
       bash .scripts/deploy-main.sh '$WEBROOT'
     "
@@ -156,7 +161,7 @@ rollback() {
   good_commit="$(cat "$LAST_GOOD")"
   [[ -n "$good_commit" ]] || { echo "Last-good commit empty" >&2; exit 1; }
 
-  sudo -u ubuntu bash -lc "
+  sudo -u "$DEPLOY_USER" bash -lc "
     set -e
     cd '$REPO'
     git fetch --prune origin
@@ -166,7 +171,7 @@ rollback() {
 
   # deploy files — run repo's deploy script if present, skip if not
   if [[ -f "$REPO/.scripts/deploy-main.sh" ]]; then
-    sudo -u ubuntu bash -lc "
+    sudo -u "$DEPLOY_USER" bash -lc "
       cd '$REPO'
       bash .scripts/deploy-main.sh '$WEBROOT'
     "

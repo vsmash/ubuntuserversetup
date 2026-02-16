@@ -1,4 +1,4 @@
-REPO="/home/ubuntu/deployment/sitename"
+REPO="/home/YOUR_USER/deployment/sitename"
 BRANCH="main"
 WEBROOT="/var/www/sitename/wwwroot"
 # set this to your actual URL (no trailing slash)

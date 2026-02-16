@@ -78,10 +78,10 @@ setup_env() {
   done < "$EXAMPLE_FILE"
 
   echo "$output" > "$ENV_FILE"
-  chmod 600 "$ENV_FILE"
+  chmod 644 "$ENV_FILE"
 
   echo ""
-  echo "  ${ENV_FILE} written (chmod 600)."
+  echo "  ${ENV_FILE} written (chmod 644 — readable by all users)."
 
   # Source it so subsequent modules can use the values
   set -a

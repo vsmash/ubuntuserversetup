@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Simplified devlog for VPS server
-# Fixed values: Client=TMPDesign, Subclient=SMWS, Project=VPS Devops
+# Values sourced from /etc/app.env (DEVLOG_CLIENT, DEVLOG_SUBCLIENT, DEVLOG_PROJECT)
 
 # Source environment variables
 if [ -f /etc/app.env ]; then
@@ -34,10 +34,10 @@ function devlog() {
         return 0
     fi
 
-    # Fixed values
-    local log_client="TMPDesign"
-    local log_subclient="SMWS"
-    local log_project="VPS Devops"
+    # Values from env (with fallbacks)
+    local log_client="${DEVLOG_CLIENT:-Client}"
+    local log_subclient="${DEVLOG_SUBCLIENT:-Project}"
+    local log_project="${DEVLOG_PROJECT:-VPS Devops}"
     local computername=$(hostname)
     local log_date=$(date +"%a %d %b %H:%M")
 
@@ -143,7 +143,7 @@ function devlog() {
         # Create CSV if doesn't exist
         if [ ! -f devlog.csv ]; then
             echo -e "Date\tComputer\tClient\tSubclient\tProject\tTicket\tMinutes\tMessage" > devlog.csv
-            # Make it group-writable so both root and ubuntu can append
+            # Make it group-writable so both root and APP_USER can append
             chmod 664 devlog.csv 2>/dev/null || true
         fi
         echo -e "$log_date\t$computername\t$log_client\t$log_subclient\t$log_project\t$log_ticket\t$log_minutes\t$log_message" >> devlog.csv
@@ -156,9 +156,9 @@ function devlog() {
         else
             if [ ! -f "$mainlogfile" ]; then
                 touch "$mainlogfile"
-                # Make it group-writable so both root and ubuntu can append
+                # Make it group-writable so both root and APP_USER can append
                 chmod 664 "$mainlogfile" 2>/dev/null || true
-                chown ubuntu:ubuntu "$mainlogfile" 2>/dev/null || true
+                chown "${APP_USER:-ubuntu}:${APP_USER:-ubuntu}" "$mainlogfile" 2>/dev/null || true
             fi
             # CSV format with proper escaping
             echo "\"$log_date\",\"$computername\",\"$log_client\",\"$log_subclient\",\"$log_project\",\"$log_minutes\",\"$log_ticket\",\"$log_message\"" >> "$mainlogfile"

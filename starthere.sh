@@ -44,9 +44,19 @@ run_all() {
   setup_env
   load_app_env
 
+  echo ""
+  echo "  ⚠  WARNING: The next steps will lock down the firewall and SSH."
+  echo "  Only proceed on a FRESH server. Press Ctrl+C to abort."
+  echo ""
+  read -rp "  Continue with full setup? [y/N]: " confirm_all
+  if [[ "$confirm_all" != "y" && "$confirm_all" != "Y" ]]; then
+    echo "  Aborted."
+    return 0
+  fi
+
   lockdown_firewall_to_sysop_ip
 
-  deploy_tooling
+  tooling_install_all
 
   setup_certbot
 
@@ -69,10 +79,10 @@ show_menu() {
   echo "  1)  Run full setup (all modules in order)"
   echo "  2)  System update & essential packages"
   echo "  3)  Setup environment (/etc/app.env)"
-  echo "  4)  Firewall lockdown (SYSOP_IP)"
-  echo "  5)  Deploy tooling (slack, systemd)"
+  echo "  4)  Firewall lockdown (SYSOP_IP) ⚠ DANGEROUS on existing servers"
+  echo "  5)  Deploy tooling (select components)"
   echo "  6)  Certbot + Cloudflare DNS"
-  echo "  7)  SSH lockdown (key auth only)"
+  echo "  7)  SSH lockdown (key auth only) ⚠ DANGEROUS on existing servers"
   echo ""
   echo "  8)  Manage site deployments"
   echo ""
