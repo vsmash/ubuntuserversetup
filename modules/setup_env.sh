@@ -47,37 +47,40 @@ setup_env() {
   echo "  Enter values for each variable (leave empty for blank):"
   echo "  -------------------------------------------------------"
 
-  local output=""
+  # Clear the output file
+  > "$ENV_FILE"
 
-  while IFS= read -r line; do
-    # Skip empty lines and comments — pass them through as-is
+  # Use file descriptor 3 to avoid stdin conflict with read prompts
+  while IFS= read -r line <&3; do
+    # Skip empty lines and comments — write them directly
     if [[ -z "$line" || "$line" =~ ^# ]]; then
-      output+="${line}"$'\n'
+      echo "$line" >> "$ENV_FILE"
       continue
     fi
 
     # Parse KEY="VALUE" or KEY=VALUE
-    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*) ]]; then
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
       local key="${BASH_REMATCH[1]}"
       local default_val="${BASH_REMATCH[2]}"
-      # Strip surrounding quotes from default
-      default_val="${default_val#\"}"
-      default_val="${default_val%\"}"
+      
+      # Strip surrounding quotes from default (handles both single and double quotes)
+      if [[ "$default_val" =~ ^\"(.*)\"$ ]] || [[ "$default_val" =~ ^\'(.*)\'$ ]]; then
+        default_val="${BASH_REMATCH[1]}"
+      fi
 
-      read -rp "  ${key} [${default_val}]: " user_val
+      # Read from stdin (terminal), not from file descriptor 3
+      read -rp "  ${key} [${default_val}]: " user_val </dev/tty
 
       if [ -n "$user_val" ]; then
-        output+="${key}=\"${user_val}\""$'\n'
+        echo "${key}=\"${user_val}\"" >> "$ENV_FILE"
       else
-        output+="${key}=\"\""$'\n'
+        echo "${key}=\"\"" >> "$ENV_FILE"
       fi
     else
       # Unknown format, pass through
-      output+="${line}"$'\n'
+      echo "$line" >> "$ENV_FILE"
     fi
-  done < "$EXAMPLE_FILE"
-
-  echo "$output" > "$ENV_FILE"
+  done 3< "$EXAMPLE_FILE"
   chmod 644 "$ENV_FILE"
 
   echo ""
