@@ -2,8 +2,6 @@
 # Module: system_update.sh
 # Runs apt update & full upgrade, then installs essential packages (skipping any already present)
 
-set -e
-
 ESSENTIAL_PACKAGES=(
   curl
   wget
@@ -24,8 +22,12 @@ ESSENTIAL_PACKAGES=(
 
 system_update() {
   echo "==> Running system update & upgrade..."
-  apt-get update -y
-  apt-get upgrade -y
+  if ! apt-get update -y; then
+    echo "  [warning] apt-get update failed, but continuing..."
+  fi
+  if ! apt-get upgrade -y; then
+    echo "  [warning] apt-get upgrade failed, but continuing..."
+  fi
   echo "==> System update & upgrade complete."
 
   echo "==> Checking essential packages..."
@@ -43,8 +45,37 @@ system_update() {
     echo "==> All essential packages already installed."
   else
     echo "==> Installing: ${to_install[*]}"
-    apt-get install -y "${to_install[@]}"
-    echo "==> Essential packages installed."
+    local failed_packages=()
+    
+    # Try installing all packages together first
+    if ! apt-get install -y "${to_install[@]}" 2>/dev/null; then
+      echo "  [warning] Batch install failed. Trying packages individually..."
+      
+      # Try each package individually
+      for pkg in "${to_install[@]}"; do
+        echo "  Installing $pkg..."
+        if apt-get install -y "$pkg" 2>/dev/null; then
+          echo "    [ok] $pkg installed"
+        else
+          echo "    [failed] $pkg could not be installed"
+          failed_packages+=("$pkg")
+        fi
+      done
+    fi
+    
+    if [ ${#failed_packages[@]} -gt 0 ]; then
+      echo ""
+      echo "  *** WARNING: Some packages failed to install: ${failed_packages[*]} ***"
+      echo "  This may be due to platform incompatibility (e.g., Raspberry Pi)."
+      read -rp "  Continue anyway? [Y/n]: " continue_yn
+      if [[ "$continue_yn" =~ ^[Nn]$ ]]; then
+        echo "  Setup aborted by user."
+        return 1
+      fi
+      echo "  Continuing with available packages..."
+    else
+      echo "==> Essential packages installed."
+    fi
   fi
 
   # Warn if reboot is needed (kernel upgrade etc.)
