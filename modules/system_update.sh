@@ -2,6 +2,7 @@
 # Module: system_update.sh
 # Runs apt update & full upgrade, then installs essential packages (skipping any already present)
 
+# Core utilities needed for basic server operation
 ESSENTIAL_PACKAGES=(
   curl
   wget
@@ -13,22 +14,38 @@ ESSENTIAL_PACKAGES=(
   tree
   ncdu
   tmux
-  fail2ban
-  software-properties-common
   ca-certificates
   gnupg
   lsb-release
 )
 
+# Optional packages that may conflict with existing setups
+# These are installed separately with user confirmation
+OPTIONAL_PACKAGES=(
+  fail2ban
+  software-properties-common
+)
+
 system_update() {
-  echo "==> Running system update & upgrade..."
-  if ! apt-get update -y; then
-    echo "  [warning] apt-get update failed, but continuing..."
+  echo "==> System update & upgrade"
+  echo "  ⚠ WARNING: Updating packages may break existing configurations on production servers."
+  read -rp "  Run apt-get update? [y/N]: " do_update
+  if [[ "$do_update" =~ ^[Yy]$ ]]; then
+    if ! apt-get update -y; then
+      echo "  [warning] apt-get update failed, but continuing..."
+    fi
+  else
+    echo "  [skipped] apt-get update"
   fi
-  if ! apt-get upgrade -y; then
-    echo "  [warning] apt-get upgrade failed, but continuing..."
+  
+  read -rp "  Run apt-get upgrade? [y/N]: " do_upgrade
+  if [[ "$do_upgrade" =~ ^[Yy]$ ]]; then
+    if ! apt-get upgrade -y; then
+      echo "  [warning] apt-get upgrade failed, but continuing..."
+    fi
+  else
+    echo "  [skipped] apt-get upgrade"
   fi
-  echo "==> System update & upgrade complete."
 
   echo "==> Checking essential packages..."
   local to_install=()
@@ -78,8 +95,29 @@ system_update() {
     fi
   fi
 
+  # Prompt for optional packages
+  echo ""
+  echo "==> Optional packages (may conflict with existing setups):"
+  for pkg in "${OPTIONAL_PACKAGES[@]}"; do
+    if dpkg -s "$pkg" &>/dev/null; then
+      echo "  [ok] $pkg (already installed)"
+    else
+      read -rp "  Install $pkg? [y/N]: " install_opt
+      if [[ "$install_opt" =~ ^[Yy]$ ]]; then
+        if apt-get install -y "$pkg" 2>/dev/null; then
+          echo "    [ok] $pkg installed"
+        else
+          echo "    [failed] $pkg could not be installed"
+        fi
+      else
+        echo "    [skipped] $pkg"
+      fi
+    fi
+  done
+
   # Warn if reboot is needed (kernel upgrade etc.)
   if [ -f /var/run/reboot-required ]; then
+    echo ""
     echo "  *** NOTICE: A reboot is required to complete updates ***"
   fi
 }

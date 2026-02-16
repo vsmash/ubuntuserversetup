@@ -110,7 +110,7 @@ tooling_install_devlog() {
   _tooling_symlink "${REPO_DIR}/devlog_server.sh" /usr/local/bin/devlog
 
   mkdir -p /etc/serversetup/credentials
-  chmod 700 /etc/serversetup/credentials
+  chmod 755 /etc/serversetup/credentials
 
   # PHP dependencies for Google Sheets integration
   if [ -d "${REPO_DIR}/php_functions" ]; then
