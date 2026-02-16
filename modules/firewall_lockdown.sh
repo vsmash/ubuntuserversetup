@@ -39,12 +39,13 @@ lockdown_firewall_to_ip() {
 lockdown_firewall_to_sysop_ip() {
   if [[ -z "$SYSOP_IP" || "$SYSOP_IP" == "your.ip.address.here" ]]; then
     echo "SYSOP_IP is not set to a valid IP address. Skipping firewall lockdown."
-    return 1
+    return 0
   fi
   # Add firewall rules to allow only SYSOP_IP
   if command -v ufw >/dev/null && ufw status | grep -q 'Status: active'; then
     lockdown_firewall_to_ip "$SYSOP_IP"
   else
     echo "UFW is not active or not installed. Skipping firewall lockdown."
+    return 0
   fi
 }

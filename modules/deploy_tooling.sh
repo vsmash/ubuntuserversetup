@@ -17,12 +17,15 @@ _tooling_sync_repo() {
     echo "  Updating ${REPO_DIR} from source..."
     rsync -a --exclude='.git' --exclude='.env.*' "$SCRIPT_DIR/" "$REPO_DIR/"
   fi
+  
+  # Ensure all users can read and execute scripts
+  chmod -R a+rX "$REPO_DIR"
 }
 
 # ---- Helper: symlink with idempotency ----
 _tooling_symlink() {
   local src="$1" dest="$2"
-  chmod +x "$src"
+  chmod a+rx "$src"
   if [ -L "$dest" ] && [ "$(readlink -f "$dest")" = "$src" ]; then
     echo "  [ok] $dest already correct."
   else
