@@ -34,11 +34,14 @@ function devlog() {
         return 0
     fi
 
+    # ssh client ip
+    local ssh_client_ip="${SSH_CLIENT%% *}"
+
     # Values from env (with fallbacks)
     local log_client="${DEVLOG_CLIENT:-Client}"
     local log_subclient="${DEVLOG_SUBCLIENT:-Project}"
     local log_project="${DEVLOG_PROJECT:-VPS Devops}"
-    local computername=$(hostname)
+    local computername="$(hostname) from ${ssh_client_ip}"
     local log_date=$(date +"%a %d %b %H:%M")
 
     # 1st argument: message
