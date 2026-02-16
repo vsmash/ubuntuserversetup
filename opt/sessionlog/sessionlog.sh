@@ -75,6 +75,7 @@ _SESSIONLOG_LAST_FLUSH=""
 _SESSIONLOG_PREV_PROMPT_COMMAND=""
 _SESSIONLOG_CMD_COUNT=0
 _SESSIONLOG_TS_OFFSET=0
+_SESSIONLOG_FLUSHING=false
 
 # ---------------------------------------------------------------
 # Public functions
@@ -110,11 +111,15 @@ function sessionlog_start() {
     _SESSIONLOG_CMD_COUNT=0
     _SESSIONLOG_ACTIVE=true
 
-    # Save existing PROMPT_COMMAND so we can restore it
-    _SESSIONLOG_PREV_PROMPT_COMMAND="${PROMPT_COMMAND:-}"
-
-    # Prepend our capture hook
-    PROMPT_COMMAND="_sessionlog_capture; ${PROMPT_COMMAND:-}"
+    # Detect shell and set up appropriate hook
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+        # zsh: use precmd hook
+        precmd_functions+=(_sessionlog_capture)
+    else
+        # bash: use PROMPT_COMMAND
+        _SESSIONLOG_PREV_PROMPT_COMMAND="${PROMPT_COMMAND:-}"
+        PROMPT_COMMAND="_sessionlog_capture; ${PROMPT_COMMAND:-}"
+    fi
 
     # Set EXIT trap (preserve existing trap)
     local existing_trap
@@ -137,8 +142,14 @@ function sessionlog_stop() {
 
     _sessionlog_flush_and_log "Session ended"
 
-    # Restore PROMPT_COMMAND
-    PROMPT_COMMAND="${_SESSIONLOG_PREV_PROMPT_COMMAND:-}"
+    # Remove hooks based on shell type
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+        # zsh: remove from precmd_functions
+        precmd_functions=(${precmd_functions[@]:#_sessionlog_capture})
+    else
+        # bash: restore PROMPT_COMMAND
+        PROMPT_COMMAND="${_SESSIONLOG_PREV_PROMPT_COMMAND:-}"
+    fi
 
     _SESSIONLOG_ACTIVE=false
     echo -e "${_SL_GREEN}Session log stopped.${_SL_OFF}"
@@ -184,14 +195,22 @@ function sessionlog_flush() {
 
 function _sessionlog_capture() {
     [[ "$_SESSIONLOG_ACTIVE" != "true" ]] && return
+    [[ "$_SESSIONLOG_FLUSHING" == "true" ]] && return
 
-    # Get the last history entry
-    local hist_line
-    hist_line=$(history 1)
-    local hist_num
-    hist_num=$(echo "$hist_line" | awk '{print $1}')
-    local cmd
-    cmd=$(echo "$hist_line" | sed 's/^[ ]*[0-9]*[ ]*//')
+    # Get the last history entry (shell-specific)
+    local hist_line hist_num cmd
+    
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+        # zsh: use fc -l -1 or history array
+        hist_line=$(fc -l -1 2>/dev/null)
+        hist_num=$(echo "$hist_line" | awk '{print $1}')
+        cmd=$(echo "$hist_line" | sed 's/^[ ]*[0-9]*[ ]*//')
+    else
+        # bash: use history 1
+        hist_line=$(history 1)
+        hist_num=$(echo "$hist_line" | awk '{print $1}')
+        cmd=$(echo "$hist_line" | sed 's/^[ ]*[0-9]*[ ]*//')
+    fi
 
     # Skip if same history number (duplicate prompt redraw)
     if [[ "$hist_num" == "$_SESSIONLOG_LAST_HISTNUM" ]]; then
@@ -233,19 +252,35 @@ function _sessionlog_flush_and_log() {
     local reason="${1:-flush}"
 
     # Nothing to flush
-    if [[ ! -f "$_SESSIONLOG_FILE" ]] || [[ ! -s "$_SESSIONLOG_FILE" ]]; then
+    if [[ ! -f "$_SESSIONLOG_FILE" ]]; then
+        _SESSIONLOG_LAST_FLUSH=$(date +%s)
+        return 0
+    fi
+    
+    if [[ ! -s "$_SESSIONLOG_FILE" ]]; then
         _SESSIONLOG_LAST_FLUSH=$(date +%s)
         return 0
     fi
 
-    # Snapshot commands and clear immediately so we don't block
-    local commands
-    commands=$(cat "$_SESSIONLOG_FILE")
-    local cmd_count
-    cmd_count=$(wc -l < "$_SESSIONLOG_FILE" | tr -d ' ')
-    > "$_SESSIONLOG_FILE"
+    # Prevent recursive flush (only set after confirming there's data)
+    if [[ "$_SESSIONLOG_FLUSHING" == "true" ]]; then
+        return 0
+    fi
+    _SESSIONLOG_FLUSHING=true
+
+    # Atomically move file to temp location to avoid race conditions
+    local temp_file="${_SESSIONLOG_FILE}.flush.$$"
+    mv "$_SESSIONLOG_FILE" "$temp_file" 2>/dev/null || return 0
+    
+    # Read from temp file
+    local commands cmd_count
+    commands=$(<"$temp_file")
+    cmd_count=$(echo "$commands" | wc -l | tr -d ' ')
+    
     _SESSIONLOG_LAST_FLUSH=$(date +%s)
     _SESSIONLOG_CMD_COUNT=0
+
+    echo -e "${_SL_GREEN}Flushing $cmd_count commands (AI summary in background)...${_SL_OFF}"
 
     # Snapshot terminal output if typescript capture is active
     local output_context=""
@@ -263,28 +298,49 @@ function _sessionlog_flush_and_log() {
         fi
     fi
 
+    # Reset flush guard before spawning background job
+    _SESSIONLOG_FLUSHING=false
+
+    # Capture env vars for background subshell
+    local api_key="${SESSIONLOG_ONEMIN_API_KEY:-}"
+    local openai_key="${SESSIONLOG_OPENAI_TOKEN:-}"
+
     # Fire and forget — AI summary + devlog in background subshell
     (
+        export SESSIONLOG_ONEMIN_API_KEY="$api_key"
+        export SESSIONLOG_OPENAI_TOKEN="$openai_key"
+        
         local summary
         summary=$(_sessionlog_ai_summarise "$commands" "$output_context")
 
         if [[ -n "$summary" ]]; then
             if command -v devlog >/dev/null 2>&1; then
-                devlog "$summary"
+                devlog -s "$summary"
             elif declare -f devlogfunction >/dev/null 2>&1; then
-                devlogfunction "$summary"
+                devlogfunction -s "$summary"
             fi
         else
             # AI failed — send raw command summary as fallback
             local fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed 's/^[0-9:]* //' | tr '\n' '; ')"
             if command -v devlog >/dev/null 2>&1; then
-                devlog "$fallback"
+                devlog  -s "$fallback"
             elif declare -f devlogfunction >/dev/null 2>&1; then
-                devlogfunction "$fallback"
+                devlogfunction -s "$fallback"
             fi
         fi
+        
+        # Clean up temp file
+        rm -f "$temp_file" 2>/dev/null
     ) &>/dev/null &
-    disown
+    
+    # Ensure background job is truly detached
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+        disown %% 2>/dev/null || true
+    else
+        disown 2>/dev/null || true
+    fi
+    
+    return 0
 }
 
 function _sessionlog_ai_summarise() {

@@ -137,19 +137,45 @@ tooling_install_sessionlog() {
   cp -f "${REPO_DIR}/opt/sessionlog/sessionlog.sh" /opt/sessionlog/sessionlog.sh
   chmod +x /opt/sessionlog/sessionlog.sh
 
-  # Install profile.d hook if not already present
+  # Install profile.d hook
   local profile_hook="/etc/profile.d/sessionlog.sh"
   if [ -f "$profile_hook" ]; then
     echo "  [ok] $profile_hook already exists."
-  else
-    echo "  Creating $profile_hook (autocapture off by default)..."
-    cat > "$profile_hook" <<'PROFEOF'
-# Session log — set SESSIONLOG_ONEMIN_API_KEY and SESSIONLOG_AUTOCAPTURE=true to enable
-# source /opt/sessionlog/sessionlog.sh
-PROFEOF
-    echo "  To enable, edit $profile_hook and uncomment the source line."
-    echo "  Set SESSIONLOG_ONEMIN_API_KEY in /etc/app.env or the profile hook."
+    read -rp "  Overwrite? [y/N]: " overwrite_sl
+    if [[ ! "$overwrite_sl" =~ ^[Yy]$ ]]; then
+      echo "  Keeping existing $profile_hook."
+      return 0
+    fi
   fi
+
+  read -rp "  1min.ai API key (required for AI summaries): " sl_key
+  if [ -z "$sl_key" ]; then
+    echo "  Warning: No API key provided. Session log AI summaries will not work."
+    echo "  Edit $profile_hook and set SESSIONLOG_ONEMIN_API_KEY later."
+  fi
+
+  read -rp "  Autocapture on login? [Y/n]: " sl_auto_yn
+  local sl_auto="true"
+  [[ "$sl_auto_yn" =~ ^[Nn]$ ]] && sl_auto="false"
+
+  read -rp "  Capture command output? [Y/n]: " sl_output_yn
+  local sl_output="true"
+  [[ "$sl_output_yn" =~ ^[Nn]$ ]] && sl_output="false"
+
+  read -rp "  Flush interval in minutes [30]: " sl_interval
+  sl_interval="${sl_interval:-30}"
+
+  echo "  Writing $profile_hook..."
+  cat > "$profile_hook" <<PROFEOF
+# Session log — AI-powered command summaries via devlog
+export SESSIONLOG_ONEMIN_API_KEY="${sl_key}"
+export SESSIONLOG_AUTOCAPTURE=${sl_auto}
+export SESSIONLOG_CAPTURE_OUTPUT=${sl_output}
+export SESSIONLOG_INTERVAL=${sl_interval}
+source /opt/sessionlog/sessionlog.sh
+PROFEOF
+  chmod 644 "$profile_hook"
+  echo "  Session log installed. Will activate on next login."
 }
 
 tooling_install_root_bash() {
