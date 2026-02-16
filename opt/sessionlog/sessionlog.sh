@@ -307,25 +307,47 @@ function _sessionlog_flush_and_log() {
 
     # Fire and forget — AI summary + devlog in background subshell
     (
-        export SESSIONLOG_ONEMIN_API_KEY="$api_key"
-        export SESSIONLOG_OPENAI_TOKEN="$openai_key"
+        # Strip timestamps from commands
+        clean_commands=$(echo "$commands" | sed 's/^[0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} //')
         
-        local summary
-        summary=$(_sessionlog_ai_summarise "$commands" "$output_context")
+        # Skip trivial sessions
+        meaningful=$(echo "$clean_commands" | grep -cvE '^\s*(exit|logout|$)' || true)
+        if [[ "$meaningful" -lt 1 ]]; then
+            exit 0
+        fi
+        
+        # Build prompt
+        prompt="Summarise these terminal commands into a brief past-tense dev log entry. One or two sentences max. Rules: No timestamps. No usernames or hostnames. No filler like 'to enhance efficiency' or 'after completing necessary tasks'. Start with the action verb. Example: 'Restarted nginx and checked error logs after deploying config changes.'
+
+Commands:
+$clean_commands"
+        
+        # Call 1min.ai API directly
+        if [[ -n "$api_key" ]]; then
+            json_payload=$(printf '{"type":"CHAT_WITH_AI","model":"gpt-4o-mini","promptObject":{"prompt":"%s","isMixed":false,"webSearch":false}}' "$(echo "$prompt" | sed 's/"/\\"/g' | tr '\n' ' ')")
+            
+            api_response=$(curl -s --connect-timeout 5 --max-time 10 \
+                -X POST "https://api.1min.ai/api/features" \
+                -H "Content-Type: application/json" \
+                -H "API-KEY: $api_key" \
+                -d "$json_payload" 2>/dev/null)
+            
+            if command -v jq >/dev/null 2>&1; then
+                summary=$(echo "$api_response" | jq -r '.aiRecord.aiRecordDetail.resultObject[0] // empty' 2>/dev/null)
+            else
+                summary=$(echo "$api_response" | grep -o '"resultObject":\["[^"]*"' | sed 's/.*"\([^"]*\)"/\1/' | head -1)
+            fi
+        fi
 
         if [[ -n "$summary" ]]; then
             if command -v devlog >/dev/null 2>&1; then
-                devlog -s "$summary"
-            elif declare -f devlogfunction >/dev/null 2>&1; then
-                devlogfunction -s "$summary"
+                devlog -s "$summary" 2>/dev/null
             fi
         else
             # AI failed — send raw command summary as fallback
-            local fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed 's/^[0-9:]* //' | tr '\n' '; ')"
+            fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed 's/^[0-9:]* //' | tr '\n' '; ')"
             if command -v devlog >/dev/null 2>&1; then
-                devlog  -s "$fallback"
-            elif declare -f devlogfunction >/dev/null 2>&1; then
-                devlogfunction -s "$fallback"
+                devlog -s "$fallback" 2>/dev/null
             fi
         fi
         
