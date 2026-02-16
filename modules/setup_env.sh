@@ -28,12 +28,17 @@ setup_env() {
       set -a
       source "$ENV_FILE"
       set +a
-      if [ -z "${SYSOP_IP:-}" ] || ! [[ "$SYSOP_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "  error: Existing ${ENV_FILE} has missing or invalid SYSOP_IP." >&2
-        echo "  Re-run and choose to overwrite, or edit ${ENV_FILE} manually." >&2
-        exit 1
+      
+      # Validate SYSOP_IP (optional)
+      if [ -z "${SYSOP_IP:-}" ]; then
+        echo "  ⚠ WARNING: SYSOP_IP is empty. Firewall lockdown will be skipped."
+      elif ! [[ "$SYSOP_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "  ⚠ WARNING: SYSOP_IP '${SYSOP_IP}' is not a valid IPv4 address."
+        echo "  Firewall lockdown will be skipped."
+      else
+        echo "  ✓ SYSOP_IP validated: ${SYSOP_IP}"
       fi
-      echo "  SYSOP_IP validated: ${SYSOP_IP}"
+      
       return 0
     fi
   fi
@@ -91,24 +96,18 @@ setup_env() {
   source "$ENV_FILE"
   set +a
 
-  # --- Validate required variables ---
+  # --- Validate SYSOP_IP (optional) ---
   if [ -z "${SYSOP_IP:-}" ]; then
     echo ""
-    echo "  error: SYSOP_IP is required but was left empty." >&2
-    echo "  This IP is used to lock down the firewall. Cannot continue without it." >&2
-    echo "  Re-run this script and provide a valid IP for SYSOP_IP." >&2
-    exit 1
-  fi
-
-  # Basic IPv4 format check
-  if ! [[ "$SYSOP_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "  ⚠ WARNING: SYSOP_IP is empty. Firewall lockdown will be skipped."
+  elif ! [[ "$SYSOP_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo ""
-    echo "  error: SYSOP_IP '${SYSOP_IP}' does not look like a valid IPv4 address." >&2
-    echo "  Re-run this script and provide a valid IP for SYSOP_IP." >&2
-    exit 1
+    echo "  ⚠ WARNING: SYSOP_IP '${SYSOP_IP}' is not a valid IPv4 address."
+    echo "  Firewall lockdown will be skipped."
+  else
+    echo ""
+    echo "  ✓ SYSOP_IP validated: ${SYSOP_IP}"
   fi
-
-  echo ""
-  echo "  SYSOP_IP validated: ${SYSOP_IP}"
+  
   echo "==> Environment setup complete."
 }
