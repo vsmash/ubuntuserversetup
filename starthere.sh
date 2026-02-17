@@ -112,6 +112,7 @@ run_menu() {
         lockdown_firewall_to_sysop_ip
         ;;
       5)
+        load_app_env
         deploy_tooling
         ;;
       6)
