@@ -76,6 +76,7 @@ _SESSIONLOG_PREV_PROMPT_COMMAND=""
 _SESSIONLOG_CMD_COUNT=0
 _SESSIONLOG_TS_OFFSET=0
 _SESSIONLOG_FLUSHING=false
+_SESSIONLOG_AI_ENABLED=true
 
 # ---------------------------------------------------------------
 # Public functions
@@ -188,6 +189,61 @@ function sessionlog_flush() {
     fi
     _sessionlog_flush_and_log "Manual flush"
 }
+
+function sessionlog_ai_on() {
+    _SESSIONLOG_AI_ENABLED=true
+    echo -e "${_SL_GREEN}✓ AI summarization enabled${_SL_OFF}"
+}
+
+function sessionlog_ai_off() {
+    _SESSIONLOG_AI_ENABLED=false
+    echo -e "${_SL_YELLOW}AI summarization disabled (raw command logs only)${_SL_OFF}"
+}
+
+function sessionlog_ai_status() {
+    if [[ "$_SESSIONLOG_AI_ENABLED" == "true" ]]; then
+        echo -e "${_SL_GREEN}AI summarization: enabled${_SL_OFF}"
+    else
+        echo -e "${_SL_YELLOW}AI summarization: disabled${_SL_OFF}"
+    fi
+}
+
+function sessionlog_help() {
+    echo -e "${_SL_CYAN}=== Session Log Commands ===${_SL_OFF}\n"
+    echo -e "${_SL_GREEN}Capture Control:${_SL_OFF}"
+    echo "  sl-on              Start capturing commands"
+    echo "  sl-off             Stop capturing and flush"
+    echo "  sl-status          Show capture status and commands"
+    echo "  sl-flush           Manually flush to devlog"
+    echo ""
+    echo -e "${_SL_GREEN}AI Control:${_SL_OFF}"
+    echo "  sl-ai-on           Enable AI summarization"
+    echo "  sl-ai-off          Disable AI (use raw logs)"
+    echo "  sl-ai              Check AI status"
+    echo ""
+    echo -e "${_SL_GREEN}Help:${_SL_OFF}"
+    echo "  sl-help            Show this help message"
+    echo ""
+    echo -e "${_SL_YELLOW}Examples:${_SL_OFF}"
+    echo "  sl-ai-off          # Disable AI, use raw command logs"
+    echo "  sl-flush           # Flush current session"
+    echo "  sl-ai-on           # Re-enable AI summarization"
+    echo "  sl-off             # Stop capture entirely"
+    echo ""
+    echo -e "${_SL_CYAN}Full function names also available:${_SL_OFF}"
+    echo "  sessionlog_start, sessionlog_stop, sessionlog_status,"
+    echo "  sessionlog_flush, sessionlog_ai_on, sessionlog_ai_off"
+}
+
+# Convenience aliases
+alias sl-on='sessionlog_start'
+alias sl-off='sessionlog_stop'
+alias sl-status='sessionlog_status'
+alias sl-flush='sessionlog_flush'
+alias sl-ai-on='sessionlog_ai_on'
+alias sl-ai-off='sessionlog_ai_off'
+alias sl-ai='sessionlog_ai_status'
+alias sl-help='sessionlog_help'
 
 # ---------------------------------------------------------------
 # Internal functions
@@ -302,6 +358,7 @@ function _sessionlog_flush_and_log() {
     # Capture env vars for background subshell
     local api_key="${SESSIONLOG_ONEMIN_API_KEY:-}"
     local openai_key="${SESSIONLOG_OPENAI_TOKEN:-}"
+    local ai_enabled="$_SESSIONLOG_AI_ENABLED"
 
     # Fire and forget — AI summary + devlog in background subshell
     (
@@ -311,6 +368,17 @@ function _sessionlog_flush_and_log() {
         # Skip trivial sessions
         meaningful=$(echo "$clean_commands" | grep -cvE '^\s*(exit|logout|$)' || true)
         if [[ "$meaningful" -lt 1 ]]; then
+            exit 0
+        fi
+        
+        # Check if AI is enabled
+        if [[ "$ai_enabled" != "true" ]]; then
+            # AI disabled - send raw command list
+            fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed 's/^[0-9:]* //' | tr '\n' '; ')"
+            if command -v devlog >/dev/null 2>&1; then
+                devlog -s "$fallback" 2>/dev/null
+            fi
+            rm -f "$temp_file" 2>/dev/null
             exit 0
         fi
         
