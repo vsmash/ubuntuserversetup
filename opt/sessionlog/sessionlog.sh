@@ -347,32 +347,40 @@ function _sessionlog_on_exit() {
 
 function _sessionlog_flush_and_log() {
     local reason="${1:-flush}"
+    echo "DEBUG: _sessionlog_flush_and_log called with reason: $reason"
 
     # Nothing to flush
     if [[ ! -f "$_SESSIONLOG_FILE" ]]; then
+        echo "DEBUG: No session file found"
         _SESSIONLOG_LAST_FLUSH=$(date +%s)
         return 0
     fi
     
     if [[ ! -s "$_SESSIONLOG_FILE" ]]; then
+        echo "DEBUG: Session file is empty"
         _SESSIONLOG_LAST_FLUSH=$(date +%s)
         return 0
     fi
 
     # Prevent recursive flush (only set after confirming there's data)
     if [[ "$_SESSIONLOG_FLUSHING" == "true" ]]; then
+        echo "DEBUG: Already flushing, skipping"
         return 0
     fi
     _SESSIONLOG_FLUSHING=true
+    echo "DEBUG: Set flushing flag"
 
     # Atomically move file to temp location to avoid race conditions
     local temp_file="${_SESSIONLOG_FILE}.flush.$$"
+    echo "DEBUG: Moving session file to temp: $temp_file"
     mv "$_SESSIONLOG_FILE" "$temp_file" 2>/dev/null || return 0
     
     # Read from temp file
     local commands cmd_count
+    echo "DEBUG: Reading commands from temp file"
     commands=$(<"$temp_file")
     cmd_count=$(echo "$commands" | wc -l | tr -d ' ')
+    echo "DEBUG: Found $cmd_count commands"
     > "$_SESSIONLOG_FILE"
     _SESSIONLOG_LAST_FLUSH=$(date +%s)
     _SESSIONLOG_CMD_COUNT=0
@@ -380,6 +388,7 @@ function _sessionlog_flush_and_log() {
     # Snapshot terminal output if typescript capture is active
     local output_context=""
     if [[ -n "${_SESSIONLOG_TYPESCRIPT:-}" ]] && [[ -f "$_SESSIONLOG_TYPESCRIPT" ]]; then
+        echo "DEBUG: Processing typescript output"
         local max_lines="${SESSIONLOG_OUTPUT_LINES:-50}"
         local ts_size
         ts_size=$(stat -c%s "$_SESSIONLOG_TYPESCRIPT" 2>/dev/null || stat -f%z "$_SESSIONLOG_TYPESCRIPT" 2>/dev/null || echo 0)
@@ -395,6 +404,7 @@ function _sessionlog_flush_and_log() {
 
     # Reset flush guard before spawning background job
     _SESSIONLOG_FLUSHING=false
+    echo "DEBUG: Reset flushing flag"
 
     # Capture env vars for background subshell
     local api_key="${SESSIONLOG_ONEMIN_API_KEY:-}"
@@ -403,6 +413,7 @@ function _sessionlog_flush_and_log() {
 
     # Fire and forget — write to temp script and execute completely detached
     local flush_script="/tmp/.sessionlog_flush_$$_$(date +%s).sh"
+    echo "DEBUG: Creating flush script: $flush_script"
     cat > "$flush_script" <<FLUSH_SCRIPT_EOF
 #!/bin/bash
 temp_file="$temp_file"
@@ -475,10 +486,14 @@ rm -f "$flush_script" 2>/dev/null
 FLUSH_SCRIPT_EOF
 
     chmod +x "$flush_script"
+    echo "DEBUG: Made script executable"
     
     # Execute completely detached - double fork pattern
+    echo "DEBUG: Launching background script..."
     ( "$flush_script" </dev/null &>/dev/null & )
+    echo "DEBUG: Background script launched"
     
+    echo "DEBUG: Returning from _sessionlog_flush_and_log"
     return 0
 }
 
