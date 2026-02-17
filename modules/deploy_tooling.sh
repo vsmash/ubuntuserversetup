@@ -107,6 +107,9 @@ tooling_install_devlog() {
   echo "--- Installing devlog ---"
   _tooling_sync_repo
 
+  # Ensure devlog_server.sh is executable by all users
+  chmod a+rx "${REPO_DIR}/devlog_server.sh"
+  
   _tooling_symlink "${REPO_DIR}/devlog_server.sh" /usr/local/bin/devlog
 
   mkdir -p /etc/serversetup/credentials
