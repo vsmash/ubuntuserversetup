@@ -77,6 +77,8 @@ _SESSIONLOG_CMD_COUNT=0
 _SESSIONLOG_TS_OFFSET=0
 _SESSIONLOG_FLUSHING=false
 _SESSIONLOG_AI_ENABLED=true
+_SESSIONLOG_WRITE_ERRORS=0
+_SESSIONLOG_MAX_ERRORS=5
 
 # ---------------------------------------------------------------
 # Public functions
@@ -110,6 +112,7 @@ function sessionlog_start() {
     _SESSIONLOG_LAST_FLUSH=$(date +%s)
     _SESSIONLOG_LAST_HISTNUM=""
     _SESSIONLOG_CMD_COUNT=0
+    _SESSIONLOG_WRITE_ERRORS=0
     _SESSIONLOG_ACTIVE=true
 
     # Detect shell and set up appropriate hook
@@ -208,6 +211,27 @@ function sessionlog_ai_status() {
     fi
 }
 
+function sessionlog_test_devlog() {
+    echo -e "${_SL_CYAN}Testing devlog integration...${_SL_OFF}"
+    
+    if command -v devlog >/dev/null 2>&1; then
+        echo -e "${_SL_GREEN}✓ devlog found in PATH${_SL_OFF}"
+        echo "  Location: $(command -v devlog)"
+        echo ""
+        echo "Testing devlog call with test message..."
+        devlog -s "sessionlog test: verifying devlog integration works" 2>&1
+        local exit_code=$?
+        if [[ $exit_code -eq 0 ]]; then
+            echo -e "${_SL_GREEN}✓ devlog call succeeded${_SL_OFF}"
+        else
+            echo -e "${_SL_RED}✗ devlog call failed (exit code: $exit_code)${_SL_OFF}"
+        fi
+    else
+        echo -e "${_SL_RED}✗ devlog not found in PATH${_SL_OFF}"
+        echo "  Current PATH: $PATH"
+    fi
+}
+
 function sessionlog_help() {
     echo -e "${_SL_CYAN}=== Session Log Commands ===${_SL_OFF}\n"
     echo -e "${_SL_GREEN}Capture Control:${_SL_OFF}"
@@ -221,10 +245,14 @@ function sessionlog_help() {
     echo "  sl-ai-off          Disable AI (use raw logs)"
     echo "  sl-ai              Check AI status"
     echo ""
+    echo -e "${_SL_GREEN}Debug:${_SL_OFF}"
+    echo "  sl-test            Test devlog integration"
+    echo ""
     echo -e "${_SL_GREEN}Help:${_SL_OFF}"
     echo "  sl-help            Show this help message"
     echo ""
     echo -e "${_SL_YELLOW}Examples:${_SL_OFF}"
+    echo "  sl-test            # Test if devlog is working"
     echo "  sl-ai-off          # Disable AI, use raw command logs"
     echo "  sl-flush           # Flush current session"
     echo "  sl-ai-on           # Re-enable AI summarization"
@@ -232,7 +260,8 @@ function sessionlog_help() {
     echo ""
     echo -e "${_SL_CYAN}Full function names also available:${_SL_OFF}"
     echo "  sessionlog_start, sessionlog_stop, sessionlog_status,"
-    echo "  sessionlog_flush, sessionlog_ai_on, sessionlog_ai_off"
+    echo "  sessionlog_flush, sessionlog_ai_on, sessionlog_ai_off,"
+    echo "  sessionlog_test_devlog"
 }
 
 # Convenience aliases
@@ -243,6 +272,7 @@ alias sl-flush='sessionlog_flush'
 alias sl-ai-on='sessionlog_ai_on'
 alias sl-ai-off='sessionlog_ai_off'
 alias sl-ai='sessionlog_ai_status'
+alias sl-test='sessionlog_test_devlog'
 alias sl-help='sessionlog_help'
 
 # ---------------------------------------------------------------
@@ -280,9 +310,18 @@ function _sessionlog_capture() {
         return
     fi
 
-    # Append timestamp and command to session file
-    echo "$(date +%H:%M:%S) $cmd" >> "$_SESSIONLOG_FILE"
-    (( _SESSIONLOG_CMD_COUNT++ ))
+    # Append timestamp and command to session file (synchronous with error handling)
+    if echo "$(date +%H:%M:%S) $cmd" >> "$_SESSIONLOG_FILE" 2>/dev/null; then
+        _SESSIONLOG_WRITE_ERRORS=0
+        (( _SESSIONLOG_CMD_COUNT++ ))
+    else
+        (( _SESSIONLOG_WRITE_ERRORS++ ))
+        if [[ $_SESSIONLOG_WRITE_ERRORS -ge $_SESSIONLOG_MAX_ERRORS ]]; then
+            echo -e "${_SL_RED}Session log: Too many write errors. Auto-disabling.${_SL_OFF}" >&2
+            sessionlog_stop
+            return 1
+        fi
+    fi
 
     _sessionlog_periodic_check
 }
