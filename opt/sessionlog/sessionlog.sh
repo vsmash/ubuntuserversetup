@@ -400,22 +400,30 @@ function _sessionlog_flush_and_log() {
     local ai_enabled="$_SESSIONLOG_AI_ENABLED"
 
     # Fire and forget — AI summary + devlog in background subshell
-    (
+    # Use nohup and explicit background to ensure proper detachment
+    nohup bash -c '
+        temp_file="'"$temp_file"'"
+        commands="'"$commands"'"
+        cmd_count="'"$cmd_count"'"
+        api_key="'"$api_key"'"
+        ai_enabled="'"$ai_enabled"'"
+        
         # Strip timestamps from commands
-        clean_commands=$(echo "$commands" | sed 's/^[0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} //')
+        clean_commands=$(echo "$commands" | sed "s/^[0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} //")
         
         # Skip trivial sessions
-        meaningful=$(echo "$clean_commands" | grep -cvE '^\s*(exit|logout|$)' || true)
+        meaningful=$(echo "$clean_commands" | grep -cvE "^\s*(exit|logout|$)" || true)
         if [[ "$meaningful" -lt 1 ]]; then
+            rm -f "$temp_file" 2>/dev/null
             exit 0
         fi
         
         # Check if AI is enabled
         if [[ "$ai_enabled" != "true" ]]; then
             # AI disabled - send raw command list
-            fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed 's/^[0-9:]* //' | tr '\n' '; ')"
+            fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed "s/^[0-9:]* //" | tr "\n" "; ")"
             if command -v devlog >/dev/null 2>&1; then
-                devlog -s "$fallback" 2>/dev/null
+                devlog -s "$fallback" </dev/null &>/dev/null
             fi
             rm -f "$temp_file" 2>/dev/null
             exit 0
@@ -446,19 +454,19 @@ $clean_commands"
 
         if [[ -n "$summary" ]]; then
             if command -v devlog >/dev/null 2>&1; then
-                devlog -s "$summary" 2>/dev/null
+                devlog -s "$summary" </dev/null &>/dev/null
             fi
         else
             # AI failed — send raw command summary as fallback
-            fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed 's/^[0-9:]* //' | tr '\n' '; ')"
+            fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed "s/^[0-9:]* //" | tr "\n" "; ")"
             if command -v devlog >/dev/null 2>&1; then
-                devlog -s "$fallback" 2>/dev/null
+                devlog -s "$fallback" </dev/null &>/dev/null
             fi
         fi
         
         # Clean up temp file
         rm -f "$temp_file" 2>/dev/null
-    ) &>/dev/null & disown
+    ' </dev/null >/dev/null 2>&1 &
     
     return 0
 }
