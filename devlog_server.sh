@@ -34,14 +34,31 @@ function devlog() {
         return 0
     fi
 
-    # ssh client ip
-    local ssh_client_ip="${SSH_CLIENT%% *}"
-
     # Values from env (with fallbacks)
     local log_client="${DEVLOG_CLIENT:-Client}"
     local log_subclient="${DEVLOG_SUBCLIENT:-Project}"
     local log_project="${DEVLOG_PROJECT:-VPS Devops}"
-    local computername="$(hostname) from ${ssh_client_ip}"
+    
+    # Include SSH client IP if available
+    local computername="$(hostname)"
+    local ssh_client_ip=""
+    
+    # Try SSH_CLIENT first
+    if [[ -n "${SSH_CLIENT:-}" ]]; then
+        ssh_client_ip="${SSH_CLIENT%% *}"
+    else
+        # Fallback to parsing 'who am i' output
+        ssh_client_ip=$(who am i 2>/dev/null | grep -oP '\(\K[0-9.]+(?=\))' || true)
+    fi
+    
+    if [[ -n "$ssh_client_ip" ]]; then
+        computername="${computername}"
+        # if clientip is not empty and not localhost, append it
+        if [[ "$ssh_client_ip" != "127.0.0.1" && "$ssh_client_ip" != "::1" ]]; then
+            computername="${computername} (${ssh_client_ip})"
+        fi
+    fi
+    
     local log_date=$(date +"%a %d %b %H:%M")
 
     # 1st argument: message
