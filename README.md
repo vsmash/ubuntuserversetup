@@ -46,18 +46,31 @@ module.
 
 ### Creating the deploy user (the missing step)
 
-On standard Ubuntu **cloud images** (AWS, most VPS providers) the `ubuntu` user
-already exists. On a bare/minimal install it does not — the installer now
-detects this and **offers to create the user** (with sudo + an `.ssh` dir) when
-you run option 3, 5, 8, or the full setup. To create it manually instead:
+**Whether the `ubuntu` user pre-exists is provider-dependent.** Some Ubuntu
+cloud images ship it pre-configured (stock groups + passwordless sudo via
+cloud-init); others provision only `root` and have no `ubuntu` user at all
+(the giveaway: `/etc/sudoers.d/90-cloud-init-users` says *"User rules for root"*
+rather than *"…for ubuntu"*). Always check with `id ubuntu` first.
+
+If the user is missing, the installer detects this and **offers to create it**
+(adding `sudo` + `www-data` + an `.ssh` dir) when you run option 3, 5, 8, or
+the full setup. To create it manually instead:
 
 ```bash
 adduser --disabled-password --gecos "" ubuntu
 usermod -aG sudo ubuntu
+getent group www-data >/dev/null && usermod -aG www-data ubuntu
 # give it your SSH key so you can log in as ubuntu:
 install -d -m 700 -o ubuntu -g ubuntu /home/ubuntu/.ssh
 # ...add your public key to /home/ubuntu/.ssh/authorized_keys, owned by ubuntu...
+
+# OPTIONAL — match the passwordless sudo that some cloud images give 'ubuntu':
+# echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-ubuntu-user && chmod 440 /etc/sudoers.d/90-ubuntu-user
 ```
+
+A `--disabled-password` user **cannot `sudo` interactively** — but the deploy
+automation still works, because the targeted `/etc/sudoers.d/deploy` NOPASSWD
+rule (auto-created by the deploy tooling) covers `deploythis.sh`.
 
 If you use a different username, set `APP_USER` accordingly in `/etc/app.env`
 (step 3 of the menu); every module honours `APP_USER` and defaults to `ubuntu`.

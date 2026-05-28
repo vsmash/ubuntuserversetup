@@ -133,8 +133,24 @@ ensure_app_user() {
   fi
 
   adduser --disabled-password --gecos "" "$user"
-  usermod -aG sudo "$user"
+
+  # sudo: admin group. www-data: deploys chown webroot to ubuntu:www-data
+  # ([deployments/deploythis.sh] apply_perms), so the user should be in it.
+  # www-data isn't guaranteed on a minimal install — add only if present.
+  if getent group www-data >/dev/null; then
+    usermod -aG sudo,www-data "$user"
+    echo "  User '${user}' created, added to groups: sudo, www-data."
+  else
+    usermod -aG sudo "$user"
+    echo "  User '${user}' created, added to group: sudo."
+    echo "    (www-data group not present yet — add later: usermod -aG www-data ${user})"
+  fi
+
   install -d -m 700 -o "$user" -g "$user" "/home/${user}/.ssh"
-  echo "  User '${user}' created and added to the sudo group."
   echo "  ⚠ Add your SSH public key to /home/${user}/.ssh/authorized_keys before SSH lockdown (7)."
+  echo "  ⚠ '${user}' has NO password set. The deploy automation still works (the targeted"
+  echo "    /etc/sudoers.d/deploy NOPASSWD rule is created by tooling install), but"
+  echo "    '${user}' cannot run 'sudo' interactively. To enable that, either:"
+  echo "      echo '${user} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-${user}-user && chmod 440 /etc/sudoers.d/90-${user}-user"
+  echo "    or set a password with:  passwd ${user}"
 }
