@@ -111,3 +111,30 @@ setup_env() {
   
   echo "==> Environment setup complete."
 }
+
+# Verify the deploy user (APP_USER, default "ubuntu") exists. The deploy tooling,
+# devlog, and site management all chown/sudo/crontab against it, so it must exist
+# before those run. Offer to create it — nothing else in the repo does.
+ensure_app_user() {
+  local user="${APP_USER:-ubuntu}"
+
+  if id "$user" &>/dev/null; then
+    echo "  ✓ Deploy user '${user}' exists."
+    return 0
+  fi
+
+  echo ""
+  echo "  ⚠ Deploy user '${user}' does NOT exist."
+  echo "    Deploy tooling (5), devlog, and site management (8) all run as this user."
+  read -rp "  Create user '${user}' now? [y/N]: " create_user
+  if [[ ! "$create_user" =~ ^[Yy]$ ]]; then
+    echo "  Skipped. Create it before running deploy tooling (5) or site management (8)."
+    return 0
+  fi
+
+  adduser --disabled-password --gecos "" "$user"
+  usermod -aG sudo "$user"
+  install -d -m 700 -o "$user" -g "$user" "/home/${user}/.ssh"
+  echo "  User '${user}' created and added to the sudo group."
+  echo "  ⚠ Add your SSH public key to /home/${user}/.ssh/authorized_keys before SSH lockdown (7)."
+}

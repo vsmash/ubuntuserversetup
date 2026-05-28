@@ -43,6 +43,7 @@ run_all() {
 
   setup_env
   load_app_env
+  ensure_app_user
 
   echo ""
   echo "  ⚠  WARNING: The next steps will lock down the firewall and SSH."
@@ -106,6 +107,7 @@ run_menu() {
       3)
         setup_env
         load_app_env
+        ensure_app_user
         ;;
       4)
         load_app_env
@@ -113,6 +115,7 @@ run_menu() {
         ;;
       5)
         load_app_env
+        ensure_app_user
         deploy_tooling
         ;;
       6)
@@ -123,6 +126,8 @@ run_menu() {
         set_ssh_key_auth_only
         ;;
       8)
+        load_app_env
+        ensure_app_user
         manage_sites
         ;;
       0)

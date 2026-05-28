@@ -12,14 +12,13 @@ This guide sets up the simplified devlog system on your Ubuntu server with Googl
 
 ## Installation
 
-### 1. Run deploy_tooling module
+### 1. Run the deploy tooling module
 
-Devlog is automatically installed as part of the deploy_tooling setup:
+Devlog is installed as part of the deploy tooling. From the repo, as root:
 
 ```bash
-cd /root/ubuntusersetup
-source modules/deploy_tooling.sh
-deploy_tooling
+sudo ./starthere.sh
+# Menu → 5 (Deploy tooling) → 6 (Devlog)
 ```
 
 This will:

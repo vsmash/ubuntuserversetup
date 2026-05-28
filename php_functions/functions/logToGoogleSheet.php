@@ -23,10 +23,10 @@ function logToGoogleSheet($serviceAccountFile, $spreadsheetId, $data) {
 
     // get date at sydney time
     date_default_timezone_set('Australia/Sydney');
-    // format date like "Mon, Aug 19, 2019"
+    // format date like "Mon, Aug 19 2019"
     // get three values from the three arguments
-    $date = date("D, M j, Y");
-    $time = date("H:i");
+    $date = date("D, M j Y");
+    $time = ltrim(date("H:i"), "'");
 
     // if there is no sheet called RawLog, create it
     $sheets = $service->spreadsheets->get($spreadsheetId);
@@ -70,8 +70,8 @@ function logToGoogleSheet($serviceAccountFile, $spreadsheetId, $data) {
         // Combine the date and time strings
         $datetimeString = $lastdate . ' ' . $lasttime;
         // Create a DateTime object from the custom format
-        $datetime1 = DateTime::createFromFormat('D, M j, Y H:i', $datetimeString);
-        $now = DateTime::createFromFormat('D, M j, Y H:i', $date . ' ' . $time);
+        $datetime1 = DateTime::createFromFormat('D, M j Y H:i', $datetimeString);
+        $now = DateTime::createFromFormat('D, M j Y H:i', $date . ' ' . $time);
         if (!$now) {
             echo "Error parsing current date and time: $date $time\n";
             return;

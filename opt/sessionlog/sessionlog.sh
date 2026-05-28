@@ -79,6 +79,10 @@ _SESSIONLOG_FLUSHING=false
 _SESSIONLOG_AI_ENABLED=true
 _SESSIONLOG_WRITE_ERRORS=0
 _SESSIONLOG_MAX_ERRORS=5
+_SESSIONLOG_LAST_CMD=""
+_SESSIONLOG_QUEUE_FILE="/tmp/.sessionlog_devlog_queue_${USER}"
+_SESSIONLOG_FAILLOG_FILE="/tmp/.sessionlog_devlog_fail_${USER}.log"
+_SESSIONLOG_LOCK_DIR="/tmp/.sessionlog_lock_${USER}"
 
 # ---------------------------------------------------------------
 # Public functions
@@ -118,11 +122,19 @@ function sessionlog_start() {
     # Detect shell and set up appropriate hook
     if [[ -n "${ZSH_VERSION:-}" ]]; then
         # zsh: use precmd hook
-        precmd_functions+=(_sessionlog_capture)
+        if [[ " ${precmd_functions[*]} " != *" _sessionlog_capture "* ]]; then
+            precmd_functions+=(_sessionlog_capture)
+        fi
     else
         # bash: use PROMPT_COMMAND
         _SESSIONLOG_PREV_PROMPT_COMMAND="${PROMPT_COMMAND:-}"
-        PROMPT_COMMAND="_sessionlog_capture; ${PROMPT_COMMAND:-}"
+        if [[ "${PROMPT_COMMAND:-}" == *"_sessionlog_capture"* ]]; then
+            PROMPT_COMMAND="${PROMPT_COMMAND:-}"
+        elif [[ -n "${PROMPT_COMMAND:-}" ]]; then
+            PROMPT_COMMAND="_sessionlog_capture; ${PROMPT_COMMAND}"
+        else
+            PROMPT_COMMAND="_sessionlog_capture"
+        fi
     fi
 
     # Set EXIT trap (preserve existing trap)
@@ -144,7 +156,7 @@ function sessionlog_stop() {
         return 0
     fi
 
-    _sessionlog_flush_and_log "Session ended"
+    _sessionlog_flush_and_log_async "Session ended"
 
     # Remove hooks based on shell type
     if [[ -n "${ZSH_VERSION:-}" ]]; then
@@ -190,9 +202,7 @@ function sessionlog_flush() {
         echo -e "${_SL_YELLOW}Session log is not running.${_SL_OFF}"
         return 0
     fi
-    echo "DEBUG: Starting flush..."
-    _sessionlog_flush_and_log "Manual flush"
-    echo "DEBUG: Flush returned"
+    _sessionlog_flush_and_log_async "Manual flush"
 }
 
 function sessionlog_ai_on() {
@@ -289,10 +299,9 @@ function _sessionlog_capture() {
     local hist_line hist_num cmd
     
     if [[ -n "${ZSH_VERSION:-}" ]]; then
-        # zsh: use fc -l -1 or history array
-        hist_line=$(fc -l -1 2>/dev/null)
-        hist_num=$(echo "$hist_line" | awk '{print $1}')
-        cmd=$(echo "$hist_line" | sed 's/^[ ]*[0-9]*[ ]*//')
+        # zsh: capture latest command text and use HISTCMD for dedupe
+        cmd=$(fc -ln -1 2>/dev/null | sed 's/^[[:space:]]*//')
+        hist_num="${HISTCMD:-}"
     else
         # bash: use history 1
         hist_line=$(history 1)
@@ -301,11 +310,18 @@ function _sessionlog_capture() {
     fi
 
     # Skip if same history number (duplicate prompt redraw)
-    if [[ "$hist_num" == "$_SESSIONLOG_LAST_HISTNUM" ]]; then
+    if [[ -n "$hist_num" ]] && [[ "$hist_num" == "$_SESSIONLOG_LAST_HISTNUM" ]]; then
         _sessionlog_periodic_check
         return
     fi
     _SESSIONLOG_LAST_HISTNUM="$hist_num"
+
+    # Fallback dedupe for shells where history number may be unavailable
+    if [[ -z "$hist_num" ]] && [[ "$cmd" == "$_SESSIONLOG_LAST_CMD" ]]; then
+        _sessionlog_periodic_check
+        return
+    fi
+    _SESSIONLOG_LAST_CMD="$cmd"
 
     # Skip empty commands and our own internal functions
     if [[ -z "$cmd" ]] || [[ "$cmd" == _sessionlog_* ]] || [[ "$cmd" == sessionlog_* ]]; then
@@ -345,126 +361,157 @@ function _sessionlog_on_exit() {
     rm -f "${_SESSIONLOG_TYPESCRIPT:-}" 2>/dev/null
 }
 
+function _sessionlog_flush_and_log_async() {
+    local reason="${1:-flush}"
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+        setopt LOCAL_OPTIONS NO_BG_NICE NO_MONITOR NONOTIFY 2>/dev/null || true
+    fi
+    (
+        _sessionlog_flush_and_log "$reason"
+    ) >/dev/null 2>&1 &
+    local bg_pid=$!
+    if [[ -n "$bg_pid" ]]; then
+        disown "$bg_pid" 2>/dev/null || true
+    fi
+}
+
+function _sessionlog_append_fail_log() {
+    local message="$1"
+    printf '%s | %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$message" >> "$_SESSIONLOG_FAILLOG_FILE" 2>/dev/null || true
+}
+
+function _sessionlog_send_devlog() {
+    local summary="$1"
+    command -v devlog >/dev/null 2>&1 || return 127
+    devlog -s "$summary" </dev/null >/dev/null 2>&1
+}
+
+function _sessionlog_enqueue_summary() {
+    local summary="$1"
+    local one_line
+    one_line=$(printf '%s' "$summary" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')
+    printf '%s\n' "$one_line" >> "$_SESSIONLOG_QUEUE_FILE" 2>/dev/null || true
+}
+
+function _sessionlog_drain_queue() {
+    [[ -s "$_SESSIONLOG_QUEUE_FILE" ]] || return 0
+
+    local queue_batch="${_SESSIONLOG_QUEUE_FILE}.$$"
+    mv "$_SESSIONLOG_QUEUE_FILE" "$queue_batch" 2>/dev/null || return 0
+
+    while IFS= read -r pending; do
+        [[ -z "$pending" ]] && continue
+        if ! _sessionlog_send_devlog "$pending"; then
+            _sessionlog_enqueue_summary "$pending"
+            _sessionlog_append_fail_log "devlog retry failed; re-queued summary"
+        fi
+    done < "$queue_batch"
+
+    rm -f "$queue_batch" 2>/dev/null || true
+}
+
+function _sessionlog_process_flush_file() {
+    local temp_file="$1"
+    local cmd_count="$2"
+    local ai_enabled="$3"
+    local typescript_file="$4"
+    local max_lines="$5"
+
+    [[ -f "$temp_file" ]] || return 0
+
+    local commands clean_commands meaningful fallback final_summary output_context
+    commands=$(<"$temp_file")
+    clean_commands=$(printf '%s\n' "$commands" | sed 's/^[0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} //')
+
+    meaningful=$(printf '%s\n' "$clean_commands" | grep -cvE '^\s*(exit|logout|$)' || echo 0)
+    if [[ "$meaningful" -lt 1 ]]; then
+        rm -f "$temp_file" 2>/dev/null || true
+        return 0
+    fi
+
+    fallback="Terminal session ($cmd_count commands): $(printf '%s\n' "$commands" | head -5 | sed 's/^[0-9:]* //' | tr '\n' '; ')"
+    final_summary=""
+    if [[ "$ai_enabled" == "true" ]]; then
+        if [[ -n "$typescript_file" ]] && [[ -f "$typescript_file" ]]; then
+            output_context=$(tail -"${max_lines:-50}" "$typescript_file" 2>/dev/null \
+                | (col -b 2>/dev/null || cat) \
+                | sed $'s/\x1b\[[0-9;?]*[a-zA-Z]//g; s/\r//g' \
+                | grep -v '^$')
+        fi
+        final_summary=$(_sessionlog_ai_summarise "$commands" "$output_context")
+    fi
+    if [[ -z "$final_summary" ]]; then
+        final_summary="$fallback"
+    fi
+
+    if mkdir "$_SESSIONLOG_LOCK_DIR" 2>/dev/null; then
+        trap 'rmdir "$_SESSIONLOG_LOCK_DIR" 2>/dev/null || true' RETURN
+
+        _sessionlog_drain_queue
+        if ! _sessionlog_send_devlog "$final_summary"; then
+            _sessionlog_enqueue_summary "$final_summary"
+            _sessionlog_append_fail_log "devlog send failed; queued current summary"
+        fi
+    else
+        # Another worker is active; queue this summary for the active worker to drain.
+        _sessionlog_enqueue_summary "$final_summary"
+    fi
+
+    rm -f "$temp_file" 2>/dev/null || true
+}
+
 function _sessionlog_flush_and_log() {
     local reason="${1:-flush}"
-    echo "DEBUG: _sessionlog_flush_and_log called with reason: $reason"
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+        setopt LOCAL_OPTIONS NO_BG_NICE NO_MONITOR NONOTIFY 2>/dev/null || true
+    fi
 
     # Nothing to flush
     if [[ ! -f "$_SESSIONLOG_FILE" ]]; then
-        echo "DEBUG: No session file found"
         _SESSIONLOG_LAST_FLUSH=$(date +%s)
         return 0
     fi
     
     if [[ ! -s "$_SESSIONLOG_FILE" ]]; then
-        echo "DEBUG: Session file is empty"
         _SESSIONLOG_LAST_FLUSH=$(date +%s)
         return 0
     fi
 
     # Prevent recursive flush (only set after confirming there's data)
     if [[ "$_SESSIONLOG_FLUSHING" == "true" ]]; then
-        echo "DEBUG: Already flushing, skipping"
         return 0
     fi
     _SESSIONLOG_FLUSHING=true
-    echo "DEBUG: Set flushing flag"
 
     # Atomically move file to temp location to avoid race conditions
     local temp_file="${_SESSIONLOG_FILE}.flush.$$"
-    echo "DEBUG: Moving session file to temp: $temp_file"
-    mv "$_SESSIONLOG_FILE" "$temp_file" 2>/dev/null || return 0
+    if ! mv "$_SESSIONLOG_FILE" "$temp_file" 2>/dev/null; then
+        _SESSIONLOG_FLUSHING=false
+        return 0
+    fi
     
-    # Read from temp file
-    local commands cmd_count
-    echo "DEBUG: Reading commands from temp file"
-    commands=$(<"$temp_file")
-    cmd_count=$(echo "$commands" | wc -l | tr -d ' ')
-    echo "DEBUG: Found $cmd_count commands"
+    # Create fresh active file immediately; process temp file asynchronously.
+    local cmd_count
+    cmd_count=$(wc -l < "$temp_file" | tr -d ' ')
     > "$_SESSIONLOG_FILE"
     _SESSIONLOG_LAST_FLUSH=$(date +%s)
     _SESSIONLOG_CMD_COUNT=0
 
-    # Snapshot terminal output if typescript capture is active
-    local output_context=""
-    if [[ -n "${_SESSIONLOG_TYPESCRIPT:-}" ]] && [[ -f "$_SESSIONLOG_TYPESCRIPT" ]]; then
-        echo "DEBUG: Processing typescript output"
-        local max_lines="${SESSIONLOG_OUTPUT_LINES:-50}"
-        local ts_size
-        ts_size=$(stat -c%s "$_SESSIONLOG_TYPESCRIPT" 2>/dev/null || stat -f%z "$_SESSIONLOG_TYPESCRIPT" 2>/dev/null || echo 0)
-        if [[ "$ts_size" -gt "$_SESSIONLOG_TS_OFFSET" ]]; then
-            output_context=$(tail -c +"$(( _SESSIONLOG_TS_OFFSET + 1 ))" "$_SESSIONLOG_TYPESCRIPT" 2>/dev/null \
-                | (col -b 2>/dev/null || cat) \
-                | sed $'s/\x1b\[[0-9;?]*[a-zA-Z]//g; s/\r//g' \
-                | grep -v '^$' \
-                | tail -"$max_lines")
-            _SESSIONLOG_TS_OFFSET=$ts_size
-        fi
-    fi
-
-    # Reset flush guard before spawning background job
+    # Reset flush guard before background work
     _SESSIONLOG_FLUSHING=false
-    echo "DEBUG: Reset flushing flag"
 
-    # Capture env vars for background subshell
-    local api_key="${SESSIONLOG_ONEMIN_API_KEY:-}"
-    local openai_key="${SESSIONLOG_OPENAI_TOKEN:-}"
+    # Capture env vars for background worker
     local ai_enabled="$_SESSIONLOG_AI_ENABLED"
-
-    # Fire and forget — just call devlog directly in background, skip temp script entirely
-    echo "DEBUG: Preparing background flush..."
-    
-    # Strip timestamps
-    local clean_commands=$(echo "$commands" | sed 's/^[0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} //')
-    
-    # Skip trivial sessions
-    local meaningful=$(echo "$clean_commands" | grep -cvE '^\s*(exit|logout|$)' || echo 0)
-    if [[ "$meaningful" -lt 1 ]]; then
-        echo "DEBUG: No meaningful commands, skipping"
-        rm -f "$temp_file" 2>/dev/null
-        return 0
-    fi
-    
-    echo "DEBUG: Spawning background devlog call..."
-    
-    # Fire and forget - spawn in background with timeout protection
+    local typescript_file="${_SESSIONLOG_TYPESCRIPT:-}"
+    local output_lines="${SESSIONLOG_OUTPUT_LINES:-50}"
     (
-        # AI disabled or no key - send raw command list
-        if [[ "$_SESSIONLOG_AI_ENABLED" != "true" ]] || [[ -z "${SESSIONLOG_ONEMIN_API_KEY:-}" ]]; then
-            fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed 's/^[0-9:]* //' | tr '\n' '; ')"
-            command -v devlog &>/dev/null && devlog -s "$fallback" </dev/null &>/dev/null || true
-        else
-            # Try AI summary with timeout
-            prompt="Summarise these terminal commands into a brief past-tense dev log entry. One or two sentences max. Rules: No timestamps. No usernames or hostnames. No filler. Start with the action verb. Example: 'Restarted nginx and checked error logs.'
+        _sessionlog_process_flush_file "$temp_file" "$cmd_count" "$ai_enabled" "$typescript_file" "$output_lines"
+    ) >/dev/null 2>&1 &
+    local bg_pid=$!
+    if [[ -n "$bg_pid" ]]; then
+        disown "$bg_pid" 2>/dev/null || true
+    fi
 
-Commands:
-$clean_commands"
-            
-            json_payload=$(printf '{"type":"CHAT_WITH_AI","model":"gpt-4o-mini","promptObject":{"prompt":"%s","isMixed":false,"webSearch":false}}' "$(echo "$prompt" | sed 's/"/\\"/g' | tr '\n' ' ')")
-            
-            api_response=$(timeout 10 curl -s --connect-timeout 5 --max-time 10 \
-                -X POST "https://api.1min.ai/api/features" \
-                -H "Content-Type: application/json" \
-                -H "API-KEY: ${SESSIONLOG_ONEMIN_API_KEY}" \
-                -d "$json_payload" 2>/dev/null || true)
-            
-            if [[ -n "$api_response" ]]; then
-                summary=$(echo "$api_response" | jq -r '.aiRecord.aiRecordDetail.resultObject[0] // empty' 2>/dev/null || echo "")
-            fi
-            
-            if [[ -n "$summary" ]]; then
-                command -v devlog &>/dev/null && devlog -s "$summary" </dev/null &>/dev/null || true
-            else
-                fallback="Terminal session ($cmd_count commands): $(echo "$commands" | head -5 | sed 's/^[0-9:]* //' | tr '\n' '; ')"
-                command -v devlog &>/dev/null && devlog -s "$fallback" </dev/null &>/dev/null || true
-            fi
-        fi
-        
-        rm -f "$temp_file" 2>/dev/null || true
-    ) &>/dev/null & disown 2>/dev/null || true
-    
-    echo "DEBUG: Background job spawned"
-    echo "DEBUG: Returning from _sessionlog_flush_and_log"
     return 0
 }
 
