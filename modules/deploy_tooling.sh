@@ -17,14 +17,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # and /root/... .
 _tooling_sync_repo() {
   mkdir -p "$REPO_DIR"
-  echo "  Syncing source -> ${REPO_DIR}..."
-  rsync -a \
-    --exclude='.git' --exclude='.env.*' \
-    --exclude='/opt' --exclude='/root' \
-    "$SCRIPT_DIR/" "$REPO_DIR/"
-
-  # Remove any leftover staging dirs from older installs that did copy them.
-  rm -rf "$REPO_DIR/opt" "$REPO_DIR/root"
+  if [ "$(readlink -f "$SCRIPT_DIR")" = "$(readlink -f "$REPO_DIR")" ]; then
+    # Source already lives at the install location (cloned directly to
+    # $REPO_DIR). No sync needed, and we must NOT prune /opt and /root here
+    # because those dirs ARE the source content the install funcs read from.
+    echo "  Source is ${REPO_DIR} — no sync needed."
+  else
+    echo "  Syncing source -> ${REPO_DIR}..."
+    rsync -a \
+      --exclude='.git' --exclude='.env.*' \
+      --exclude='/opt' --exclude='/root' \
+      "$SCRIPT_DIR/" "$REPO_DIR/"
+    # Prune leftover staging dirs from earlier installs that copied them.
+    rm -rf "$REPO_DIR/opt" "$REPO_DIR/root"
+  fi
 
   # Ensure all users can read and execute scripts
   chmod -R a+rX "$REPO_DIR"
