@@ -9,15 +9,23 @@ REPO_DIR="/opt/serversetup"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ---- Helper: sync repo to /opt/serversetup (base for everything) ----
+# The repo carries 'opt/' and 'root/' subdirs whose contents mirror absolute
+# install paths (/opt/sessionlog, /root/bash). Those are deployed by the
+# install functions reading directly from $SCRIPT_DIR (the source clone), so
+# they're excluded here — otherwise $REPO_DIR/opt and $REPO_DIR/root would
+# show up as confusing nested copies of files that actually live at /opt/...
+# and /root/... .
 _tooling_sync_repo() {
-  if [ ! -d "$REPO_DIR" ]; then
-    echo "  Copying repo to ${REPO_DIR}..."
-    cp -a "$SCRIPT_DIR" "$REPO_DIR"
-  else
-    echo "  Updating ${REPO_DIR} from source..."
-    rsync -a --exclude='.git' --exclude='.env.*' "$SCRIPT_DIR/" "$REPO_DIR/"
-  fi
-  
+  mkdir -p "$REPO_DIR"
+  echo "  Syncing source -> ${REPO_DIR}..."
+  rsync -a \
+    --exclude='.git' --exclude='.env.*' \
+    --exclude='/opt' --exclude='/root' \
+    "$SCRIPT_DIR/" "$REPO_DIR/"
+
+  # Remove any leftover staging dirs from older installs that did copy them.
+  rm -rf "$REPO_DIR/opt" "$REPO_DIR/root"
+
   # Ensure all users can read and execute scripts
   chmod -R a+rX "$REPO_DIR"
 }
@@ -134,13 +142,14 @@ tooling_install_sessionlog() {
   echo "--- Installing session log ---"
   _tooling_sync_repo
 
-  if [ ! -d "${REPO_DIR}/opt/sessionlog" ]; then
+  # Read from $SCRIPT_DIR (source clone) — opt/ is excluded from $REPO_DIR.
+  if [ ! -d "${SCRIPT_DIR}/opt/sessionlog" ]; then
     echo "  error: opt/sessionlog not found in repo." >&2
     return 1
   fi
 
   mkdir -p /opt/sessionlog
-  cp -f "${REPO_DIR}/opt/sessionlog/sessionlog.sh" /opt/sessionlog/sessionlog.sh
+  cp -f "${SCRIPT_DIR}/opt/sessionlog/sessionlog.sh" /opt/sessionlog/sessionlog.sh
   chmod +x /opt/sessionlog/sessionlog.sh
 
   # Install profile.d hook
@@ -188,9 +197,10 @@ tooling_install_root_bash() {
   echo "--- Installing /root/bash scripts ---"
   _tooling_sync_repo
 
-  if [ -d "${REPO_DIR}/root/bash" ]; then
+  # Read from $SCRIPT_DIR (source clone) — root/ is excluded from $REPO_DIR.
+  if [ -d "${SCRIPT_DIR}/root/bash" ]; then
     mkdir -p /root/bash
-    rsync -a "${REPO_DIR}/root/bash/" /root/bash/
+    rsync -a "${SCRIPT_DIR}/root/bash/" /root/bash/
     chmod +x /root/bash/*.sh 2>/dev/null || true
     echo "  /root/bash scripts updated."
   else
