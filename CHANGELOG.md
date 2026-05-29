@@ -1,6 +1,8 @@
-## 0.0.3
+## 0.0.4
 29 May 2026
 
+- Marked scripts executable in git.
+	Prevents git pull from resetting executable permissions set at install time. Covers slack, slack_boot, devlog_server, deploy{,_poll}this, apt_upgrade, root/bash db scripts.
 - Refactored deployment sync logic in deploy_tooling.sh
 	Handled scenario where source was already at the install location.
 	Improved rsync operation to prevent unnecessary syncing.
