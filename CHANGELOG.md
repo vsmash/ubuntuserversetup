@@ -1,6 +1,10 @@
-## 0.0.2
+## 0.0.3
 29 May 2026
 
+- Refactored deployment sync logic in deploy_tooling.sh
+	Handled scenario where source was already at the install location.
+	Improved rsync operation to prevent unnecessary syncing.
+	Ensured proper removal of leftover staging directories.
 - Added initial VERSION file
 - Refactored deploy_tooling.sh for clarity and functionality
 		Improved directory sync logic and removed redundant checks
