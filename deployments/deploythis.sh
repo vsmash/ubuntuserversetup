@@ -98,7 +98,14 @@ apply_perms() {
   echo "Setting directory permissions..."
   find "$WEBROOT" -type d ! -perm 755 -exec chmod 755 {} +
   echo "Setting file permissions..."
-  find "$WEBROOT" -type f ! -perm 644 -exec chmod 644 {} +
+  # Config files holding credentials (wp-config*.php, db-config*.php at the webroot top level)
+  # get 640, not 644: PHP runs as the owner and the web server reads via the www-data group,
+  # so nothing else on the box can read DB credentials or salts. Everything else stays 644.
+  find "$WEBROOT" -type f ! -perm 644 \
+    ! \( -path "$WEBROOT/wp-config*.php" -o -path "$WEBROOT/db-config*.php" \) \
+    -exec chmod 644 {} +
+  find "$WEBROOT" -maxdepth 1 -type f \( -name 'wp-config*.php' -o -name 'db-config*.php' \) \
+    ! -perm 640 -exec chmod 640 {} +
   echo "Permissions applied."
 }
 
