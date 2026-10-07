@@ -99,6 +99,12 @@ apply_perms() {
   find "$WEBROOT" -type d ! -perm 755 -exec chmod 755 {} +
   echo "Setting file permissions..."
   find "$WEBROOT" -type f ! -perm 644 -exec chmod 644 {} +
+  # Secret configs (DB credentials, salts, API keys) must not be world-readable:
+  # the blanket 644 above would expose them to every local user. Owner may
+  # edit, php-fpm (group www-data) may only read.
+  echo "Tightening secret config files..."
+  find "$WEBROOT" -type f \( -name 'wp-config.php' -o -name 'wp-config.local.php' \
+    -o \( -name '.env' -o -name '.env.*' \) ! -name '*.example' \) -exec chmod 640 {} +
   echo "Permissions applied."
 }
 
